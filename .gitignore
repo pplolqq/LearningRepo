@@ -1,0 +1,14 @@
+# Maven 构建产物
+target/
+*.class
+
+# 本地验证用临时仓库（可删除）
+.m2-repo/
+
+# 日志
+*.log
+
+# IDE
+.idea/
+*.iml
+.vscode/

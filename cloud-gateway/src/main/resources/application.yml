@@ -1,0 +1,22 @@
+server:
+  port: 9527
+
+spring:
+  application:
+    name: cloud-gateway
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+    gateway:
+      routes:
+        # 第 5 步：访问 http://localhost:9527/consumer/payment/get/1 → 转发给订单服务
+        - id: consumer-order-route
+          uri: lb://cloud-consumer-order   # lb:// 表示从注册中心按服务名做负载均衡
+          predicates:
+            - Path=/consumer/**            # 路径断言：/consumer/** 的请求转发给订单服务
+        # 访问 http://localhost:9527/payment/get/1 → 直接转发给支付服务
+        - id: provider-payment-route
+          uri: lb://cloud-provider-payment
+          predicates:
+            - Path=/payment/**

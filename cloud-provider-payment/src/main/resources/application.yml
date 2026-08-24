@@ -1,0 +1,16 @@
+server:
+  port: 8001
+
+spring:
+  application:
+    name: cloud-provider-payment   # 服务名：注册到 Nacos 的名字，其他服务按这个名字调用
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848  # Nacos 注册中心地址
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: '*'   # 暴露所有端点，便于观察服务健康状态

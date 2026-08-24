@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      为什么父工程选 Spring Boot 2.3.12 + Spring Cloud Hoxton？
+      因为 Hystrix 和 Ribbon 在 Spring Cloud 2020.0（Spring Boot 2.4）之后被官方移出维护，
+      只有这一组合能同时体验 Nacos + Ribbon + Feign + Hystrix + Gateway 五件套（教学经典组合）。
+      注意：本技术栈需要 JDK 8 或 11 运行（JDK 17+ 无法运行 Spring Boot 2.3）。
+    -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>2.3.12.RELEASE</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.zrj</groupId>
+    <artifactId>springcloud-learn</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>springcloud-learn</name>
+    <description>Spring Cloud 微服务入门学习项目：Nacos 注册中心 + Ribbon 负载均衡 + Feign 服务调用 + Hystrix 熔断 + Gateway 网关</description>
+
+    <modules>
+        <module>cloud-api</module>
+        <module>cloud-provider-payment</module>
+        <module>cloud-consumer-order</module>
+        <module>cloud-gateway</module>
+    </modules>
+
+    <properties>
+        <!-- 编译级别 1.8：运行环境需要 JDK 8 或 11 -->
+        <java.version>1.8</java.version>
+        <maven.compiler.source>1.8</maven.compiler.source>
+        <maven.compiler.target>1.8</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- 统一版本管理 -->
+        <spring-cloud.version>Hoxton.SR12</spring-cloud.version>
+        <spring-cloud-alibaba.version>2.2.7.RELEASE</spring-cloud-alibaba.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Spring Cloud 全家桶版本管理 -->
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!-- Spring Cloud Alibaba 版本管理（Nacos 注册中心等） -->
+            <dependency>
+                <groupId>com.alibaba.cloud</groupId>
+                <artifactId>spring-cloud-alibaba-dependencies</artifactId>
+                <version>${spring-cloud-alibaba.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <!--
+      父工程不配置 spring-boot-maven-plugin（避免 cloud-api 这种纯 jar 模块被打包失败），
+      各可运行模块（provider / consumer / gateway）在自己 pom 里单独配置。
+    -->
+</project>
