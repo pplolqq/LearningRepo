@@ -1,0 +1,111 @@
+# ============================================================
+# Spring Cloud 学习项目 —— Docker 统一启动编排
+# ============================================================
+# 用法（在 WSL 终端，进入 deploy 目录）：
+#   一键启动（Nacos + 支付 + 订单）：docker compose up -d
+#   查看所有日志：                     docker compose logs -f
+#   查看单个服务日志：                 docker compose logs -f provider
+#   停止并删除容器：                   docker compose down
+#   第 2 步 启动支付第二实例(8002)：    docker compose --profile step2 up -d provider2
+#   第 5 步 启动网关(9527)：            docker compose --profile step5 up -d gateway
+#
+# 说明：
+#   - 直接挂载运行 target 里打好的 jar（统一放在 ./jars/ 下），
+#     改代码重新打包后，只需 docker compose restart <服务名> 即可生效。
+#   - 服务间通过 Nacos 服务发现通信（服务名），不依赖容器 IP。
+# ============================================================
+
+services:
+  # ============ 注册中心 Nacos（2.x，兼容本项目 1.4.2 客户端）============
+  nacos:
+    image: nacos/nacos-server:v2.5.3
+    container_name: nacos_v2_now
+    environment:
+      - MODE=standalone           # 单机模式，无需 MySQL
+      - NACOS_AUTH_ENABLE=false   # 关闭鉴权，学习阶段最省事
+    ports:
+      - "8848:8848"               # HTTP：客户端注册 + 控制台
+      - "9848:9848"               # gRPC：2.x 客户端用（本项目用不到，映射无妨）
+    healthcheck:
+      test: ["CMD", "bash", "-c", "cat < /dev/null > /dev/tcp/127.0.0.1/8848"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+    networks:
+      - sc-net
+
+  # ============ 支付服务（提供者）端口 8001 ============
+  provider:
+    image: eclipse-temurin:8-jre
+    container_name: cloud-provider-payment
+    depends_on:
+      nacos:
+        condition: service_healthy   # 等 Nacos 就绪再启动
+    environment:
+      - NACOS_SERVER_ADDR=nacos:8848 # 容器内用服务名访问 Nacos（覆盖 yml 默认的 localhost）
+    volumes:
+      - ./jars/cloud-provider-payment-1.0-SNAPSHOT.jar:/app/app.jar:ro
+    command: ["java", "-jar", "/app/app.jar"]
+    ports:
+      - "8001:8001"
+    networks:
+      - sc-net
+
+  # ============ 订单服务（消费者）端口 80 ============
+  consumer:
+    image: eclipse-temurin:8-jre
+    container_name: cloud-consumer-order
+    depends_on:
+      nacos:
+        condition: service_healthy
+    environment:
+      - NACOS_SERVER_ADDR=nacos:8848
+    volumes:
+      - ./jars/cloud-consumer-order-1.0-SNAPSHOT.jar:/app/app.jar:ro
+    command: ["java", "-jar", "/app/app.jar"]
+    ports:
+      - "9001:80"   # 若 80 被占用，改成 "9001:80"（左侧是宿主机端口）
+    networks:
+      - sc-net
+
+  # ============ 支付服务第二实例（第 2 步 Ribbon 负载均衡用，默认不启动）============
+  provider2:
+    image: eclipse-temurin:8-jre
+    container_name: cloud-provider-payment-8002
+    profiles: ["step2"]            # 第 2 步再启动
+    depends_on:
+      nacos:
+        condition: service_healthy
+    environment:
+      - NACOS_SERVER_ADDR=nacos:8848
+      - SERVER_PORT=8002           # 覆盖端口：同一个 jar 跑第二个实例
+    volumes:
+      - ./jars/cloud-provider-payment-1.0-SNAPSHOT.jar:/app/app.jar:ro
+    command: ["java", "-jar", "/app/app.jar"]
+    ports:
+      - "8002:8002"
+    networks:
+      - sc-net
+
+  # ============ 网关（第 5 步用，默认不启动）============
+  gateway:
+    image: eclipse-temurin:8-jre
+    container_name: cloud-gateway
+    profiles: ["step5"]
+    depends_on:
+      nacos:
+        condition: service_healthy
+    environment:
+      - NACOS_SERVER_ADDR=nacos:8848
+    volumes:
+      - ./jars/cloud-gateway-1.0-SNAPSHOT.jar:/app/app.jar:ro
+    command: ["java", "-jar", "/app/app.jar"]
+    ports:
+      - "9527:9527"
+    networks:
+      - sc-net
+
+networks:
+  sc-net:
+    driver: bridge

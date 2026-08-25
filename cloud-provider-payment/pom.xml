@@ -23,6 +23,12 @@
         <dependency>
             <groupId>com.alibaba.cloud</groupId>
             <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.hdrhistogram</groupId>
+                    <artifactId>HdrHistogram</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <!-- 健康检查端点，方便观察服务状态 -->
         <dependency>
@@ -36,7 +42,9 @@
             <version>1.0-SNAPSHOT</version>
         </dependency>
     </dependencies>
-
+    <properties>
+        <spring-framework.exclude-jsr305>true</spring-framework.exclude-jsr305>
+    </properties>
     <build>
         <plugins>
             <!-- 可执行 jar 打包插件（mvn package 后可 java -jar 运行） -->

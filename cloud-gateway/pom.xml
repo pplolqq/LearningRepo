@@ -27,6 +27,7 @@
             <groupId>com.alibaba.cloud</groupId>
             <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
         </dependency>
+       
         <!--
           Ribbon：网关 lb:// 协议按服务名转发时的客户端负载均衡支持
           （nacos-discovery 已传递引入，这里显式声明便于理解）
@@ -51,4 +52,6 @@
             </plugin>
         </plugins>
     </build>
+
+
 </project>
