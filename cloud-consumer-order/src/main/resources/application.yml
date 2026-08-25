@@ -7,4 +7,4 @@ spring:
   cloud:
     nacos:
       discovery:
-        server-addr: localhost:8848
+        server-addr: ${NACOS_SERVER_ADDR:localhost:8848}  # Nacos 地址（Docker 部署时环境变量指向 nacos:8848）
