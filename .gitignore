@@ -12,3 +12,9 @@ target/
 .idea/
 *.iml
 .vscode/
+
+deploy/jars
+
+shell_bash
+
+.envs

@@ -23,6 +23,7 @@ services:
     environment:
       - MODE=standalone           # 单机模式，无需 MySQL
       - NACOS_AUTH_ENABLE=false   # 关闭鉴权，学习阶段最省事
+      - TZ=Asia/Shanghai          # 统一时区，方便看日志时间
     ports:
       - "8848:8848"               # HTTP：客户端注册 + 控制台
       - "9848:9848"               # gRPC：2.x 客户端用（本项目用不到，映射无妨）
@@ -44,6 +45,7 @@ services:
         condition: service_healthy   # 等 Nacos 就绪再启动
     environment:
       - NACOS_SERVER_ADDR=nacos:8848 # 容器内用服务名访问 Nacos（覆盖 yml 默认的 localhost）
+      - TZ=Asia/Shanghai          # 统一时区
     volumes:
       - ./jars/cloud-provider-payment-1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
@@ -61,6 +63,7 @@ services:
         condition: service_healthy
     environment:
       - NACOS_SERVER_ADDR=nacos:8848
+      - TZ=Asia/Shanghai          # 统一时区
     volumes:
       - ./jars/cloud-consumer-order-1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
@@ -79,6 +82,7 @@ services:
         condition: service_healthy
     environment:
       - NACOS_SERVER_ADDR=nacos:8848
+      - TZ=Asia/Shanghai          # 统一时区
       - SERVER_PORT=8002           # 覆盖端口：同一个 jar 跑第二个实例
     volumes:
       - ./jars/cloud-provider-payment-1.0-SNAPSHOT.jar:/app/app.jar:ro
@@ -98,6 +102,7 @@ services:
         condition: service_healthy
     environment:
       - NACOS_SERVER_ADDR=nacos:8848
+      - TZ=Asia/Shanghai          # 统一时区
     volumes:
       - ./jars/cloud-gateway-1.0-SNAPSHOT.jar:/app/app.jar:ro
     command: ["java", "-jar", "/app/app.jar"]
