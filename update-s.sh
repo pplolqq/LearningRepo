@@ -24,6 +24,7 @@ SERVICES=(
   "cloud-provider-payment:provider"
   "cloud-provider-payment:provider2"
   "cloud-consumer-order:consumer"
+  "cloud-gateway:gateway:step5"   # 第 5 步网关：带 compose profile (step5)
 )
 MVN="mvn"
 
@@ -74,9 +75,11 @@ copy_jar() {
   local src="$BASE_DIR/$svc/target/$svc-1.0-SNAPSHOT.jar"
   local dst="$DEPLOY_DIR/jars/$svc-1.0-SNAPSHOT.jar"
   if [ -f "$src" ]; then
-    # 原子替换：先写临时文件再 rename。
-    # 避免运行中的容器（JVM 懒加载类）读到被 cp -f 原地截断的半截 jar 而崩溃。
-    cp -f "$src" "$dst.tmp" && mv -f "$dst.tmp" "$dst"
+    # 原地复制（保持同一 inode）：容器用 docker compose start/up 启动时不重建，
+    # 只有 inode 不变，bind mount 才能看到新内容。
+    # ⚠ 安全性：调用方保证同模块所有实例先停止且只复制一次（见 update_service），
+    #   因此复制时不存在运行中的 JVM 在懒加载类，不会读到半截 jar。
+    cp -f "$src" "$dst"
     log_success "已复制: $(basename "$src")"
   else
     log_error "未找到 $src，请先打包 $svc"
@@ -87,6 +90,9 @@ copy_jar() {
 update_service() {
   local module="$1"
   local compose_svc="$2"
+  local profile="${3:-}"
+  local pf=()
+  [ -n "$profile" ] && pf=(--profile "$profile")  # 带 profile 的服务（如 gateway:step5）需要此参数才能被 compose 识别
 
   log_step "更新 $module (docker: $compose_svc)"
 
@@ -96,7 +102,7 @@ update_service() {
 
   # 1. 停止
   log_info "停止容器 $compose_svc ..."
-  ( cd "$DEPLOY_DIR" && docker compose stop "$compose_svc" )
+  ( cd "$DEPLOY_DIR" && docker compose "${pf[@]}" stop "$compose_svc" )
   log_success "已停止 $compose_svc"
 
   # 2. 打包 + 复制（同模块多实例只打一次包、只复制一次）
@@ -112,9 +118,11 @@ update_service() {
     log_info "$module 已打包并复制过，复用 jar（不再触碰 jar 文件）"
   fi
 
-  # 3. 启动（force-recreate：重建容器让 bind mount 重新解析到最新 jar 文件）
+  # 3. 启动：up -d（不带 --force-recreate）
+  #    已存在的容器不重建（等同 start，bind mount 保持原 inode，配合原地 cp 生效）；
+  #    不存在的容器（如首次部署 gateway）会自动创建。
   log_info "启动容器 $compose_svc ..."
-  ( cd "$DEPLOY_DIR" && docker compose up -d --force-recreate --no-deps "$compose_svc" )
+  ( cd "$DEPLOY_DIR" && docker compose "${pf[@]}" up -d --no-deps "$compose_svc" )
   log_success "已启动 $compose_svc"
 
   log_success "$compose_svc 更新完成"
@@ -127,10 +135,9 @@ main() {
     for arg in "${ARGS[@]}"; do
       matched=0
       for entry in "${SERVICES[@]}"; do
-        module="${entry%%:*}"
-        compose_svc="${entry##*:}"
+        IFS=':' read -r module compose_svc profile <<< "$entry"
         if [ "$compose_svc" = "$arg" ] || [ "$module" = "$arg" ]; then
-          update_service "$module" "$compose_svc"
+          update_service "$module" "$compose_svc" "$profile"
           matched=1
         fi
       done
@@ -141,9 +148,8 @@ main() {
       update_api
     fi
     for entry in "${SERVICES[@]}"; do
-      module="${entry%%:*}"
-      compose_svc="${entry##*:}"
-      update_service "$module" "$compose_svc"
+      IFS=':' read -r module compose_svc profile <<< "$entry"
+      update_service "$module" "$compose_svc" "$profile"
     done
   fi
 
