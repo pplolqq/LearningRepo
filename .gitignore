@@ -18,3 +18,4 @@ tmp*
 shell_bash
 
 .envs
+test_api.sh
