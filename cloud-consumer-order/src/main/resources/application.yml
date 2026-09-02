@@ -8,3 +8,6 @@ spring:
     nacos:
       discovery:
         server-addr: ${NACOS_SERVER_ADDR:localhost:8848}  # Nacos 地址（Docker 部署时环境变量指向 nacos:8848）
+cloud-provider-payment:   # 注意：这里是被调用方的 spring.application.name
+  ribbon:
+    NFLoadBalancerRuleClassName: com.alibaba.cloud.nacos.ribbon.NacosRule

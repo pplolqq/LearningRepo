@@ -4,7 +4,7 @@ target/
 
 # 本地验证用临时仓库（可删除）
 .m2-repo/
-
+*.jar
 # 日志
 *.log
 
@@ -14,7 +14,7 @@ target/
 .vscode/
 
 deploy/jars
-
+tmp*
 shell_bash
 
 .envs
