@@ -99,20 +99,20 @@ update_service() {
   ( cd "$DEPLOY_DIR" && docker compose stop "$compose_svc" )
   log_success "已停止 $compose_svc"
 
-  # 2. 打包（同模块多实例只打一次包）
+  # 2. 打包 + 复制（同模块多实例只打一次包、只复制一次）
+  #    ⚠ 不能每次实例都复制：cp -f 会原地截断重写 jar，若此时另一个实例
+  #      正在运行且 JVM 还在懒加载类，会读到半截 jar 导致 NoClassDefFoundError 崩溃
   if [ -z "${BUILT_MODULES[$module]:-}" ]; then
     log_info "打包 $module ..."
-    mvn_package $module
+    mvn_package $module || { log_error "打包失败，中止 $compose_svc"; return 1; }
     log_success "打包完成 $module"
+    copy_jar "$module" || { log_error "复制失败，中止 $compose_svc"; return 1; }
     BUILT_MODULES[$module]=1
   else
-    log_info "$module 已打包过，复用 jar"
+    log_info "$module 已打包并复制过，复用 jar（不再触碰 jar 文件）"
   fi
 
-  # 3. 复制 jar
-  copy_jar "$module" || { log_error "复制失败，中止 $compose_svc"; return 1; }
-
-  # 4. 启动（force-recreate：重建容器让 bind mount 重新解析到最新 jar 文件）
+  # 3. 启动（force-recreate：重建容器让 bind mount 重新解析到最新 jar 文件）
   log_info "启动容器 $compose_svc ..."
   ( cd "$DEPLOY_DIR" && docker compose up -d --force-recreate --no-deps "$compose_svc" )
   log_success "已启动 $compose_svc"
