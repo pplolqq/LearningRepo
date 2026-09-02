@@ -374,8 +374,9 @@ return paymentFeignService.getPaymentById(id);
 
 ### 4. 后续可以继续学什么
 
-- **Nacos 配置中心**：配置动态刷新（本项目的 nacos-discovery 可扩展 nacos-config）
 - **Sentinel / Resilience4j**：Hystrix 的现代替代品（流控、熔断、系统保护）
+
+- **Nacos 配置中心**：配置动态刷新（本项目的 nacos-discovery 可扩展 nacos-config）
 - **网关进阶**：限流（RequestRateLimiter）、鉴权过滤器、跨域配置
 - **链路追踪**：Sleuth + Zipkin 看一次请求在多个服务间的完整链路
 
