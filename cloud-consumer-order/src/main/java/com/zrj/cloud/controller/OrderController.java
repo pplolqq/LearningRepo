@@ -35,6 +35,16 @@ public class OrderController {
     }
 
     /**
+     * 模拟慢调用（第 4 步 Hystrix 演示入口）
+     * 访问 http://localhost/consumer/payment/timeout
+     * 支付服务会 sleep 3s，超过 Hystrix 超时阈值(2s) → 触发超时降级；连续失败 → 熔断
+     */
+    @GetMapping("/consumer/payment/timeout")
+    public CommonResult<Payment> timeout() {
+        return paymentFeignService.timeout();
+    }
+
+    /**
      * 创建支付记录（Feign 版，POST 示例）
      */
     @PostMapping("/consumer/payment/create")

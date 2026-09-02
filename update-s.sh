@@ -22,6 +22,7 @@ BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
 DEPLOY_DIR="$BASE_DIR/deploy"
 SERVICES=(
   "cloud-provider-payment:provider"
+  "cloud-provider-payment:provider2"
   "cloud-consumer-order:consumer"
 )
 MVN="mvn"
@@ -73,7 +74,9 @@ copy_jar() {
   local src="$BASE_DIR/$svc/target/$svc-1.0-SNAPSHOT.jar"
   local dst="$DEPLOY_DIR/jars/$svc-1.0-SNAPSHOT.jar"
   if [ -f "$src" ]; then
-    cp -f "$src" "$dst"
+    # 原子替换：先写临时文件再 rename。
+    # 避免运行中的容器（JVM 懒加载类）读到被 cp -f 原地截断的半截 jar 而崩溃。
+    cp -f "$src" "$dst.tmp" && mv -f "$dst.tmp" "$dst"
     log_success "已复制: $(basename "$src")"
   else
     log_error "未找到 $src，请先打包 $svc"
@@ -96,21 +99,28 @@ update_service() {
   ( cd "$DEPLOY_DIR" && docker compose stop "$compose_svc" )
   log_success "已停止 $compose_svc"
 
-  # 2. 打包
-  log_info "打包 $module ..."
-  mvn_package $module
-  log_success "打包完成 $module"
+  # 2. 打包（同模块多实例只打一次包）
+  if [ -z "${BUILT_MODULES[$module]:-}" ]; then
+    log_info "打包 $module ..."
+    mvn_package $module
+    log_success "打包完成 $module"
+    BUILT_MODULES[$module]=1
+  else
+    log_info "$module 已打包过，复用 jar"
+  fi
 
   # 3. 复制 jar
   copy_jar "$module" || { log_error "复制失败，中止 $compose_svc"; return 1; }
 
-  # 4. 启动
+  # 4. 启动（force-recreate：重建容器让 bind mount 重新解析到最新 jar 文件）
   log_info "启动容器 $compose_svc ..."
-  ( cd "$DEPLOY_DIR" && docker compose start "$compose_svc" )
+  ( cd "$DEPLOY_DIR" && docker compose up -d --force-recreate --no-deps "$compose_svc" )
   log_success "已启动 $compose_svc"
 
   log_success "$compose_svc 更新完成"
 }
+
+declare -A BUILT_MODULES
 
 main() {
   if [ "${#ARGS[@]}" -gt 0 ]; then

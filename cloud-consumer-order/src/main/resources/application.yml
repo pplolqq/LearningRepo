@@ -11,3 +11,20 @@ spring:
 cloud-provider-payment:   # 注意：这里是被调用方的 spring.application.name
   ribbon:
     NFLoadBalancerRuleClassName: com.alibaba.cloud.nacos.ribbon.NacosRule
+
+# ---------- 第 4 步：Hystrix 熔断配置 ----------
+feign:
+  hystrix:
+    enabled: true   # 关键！开启 Feign 的 Hystrix 支持，否则 fallback 不生效
+
+hystrix:
+  command:
+    default:
+      execution:
+        isolation:
+          thread:
+            timeoutInMilliseconds: 2000   # 单次调用超时 2s（支付服务慢接口 sleep 3s → 必超时）
+      circuitBreaker:
+        requestVolumeThreshold: 5          # 10s 滑动窗口内 ≥ 5 个请求，才启动熔断判断（防低频误判）
+        errorThresholdPercentage: 50       # 错误率 ≥ 50% 触发熔断
+        sleepWindowInMilliseconds: 10000   # 熔断打开后 10s 进入半开状态（放一个测试请求）

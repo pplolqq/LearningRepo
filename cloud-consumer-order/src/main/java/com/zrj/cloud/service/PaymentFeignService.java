@@ -20,7 +20,9 @@ import org.springframework.web.bind.annotation.RequestBody;
  *   第 2 步 RestTemplate：手动写 URL 字符串，容易写错、无编译期检查
  *   第 3 步 Feign：      接口 + 注解，IDE 能补全、编译期就能发现路径写错
  */
-@FeignClient(name = "cloud-provider-payment")  // name = 注册在 Nacos 里的服务名
+@FeignClient(name = "cloud-provider-payment", fallback = PaymentFeignServiceFallback.class)
+//            ↑ name = 注册在 Nacos 里的服务名
+//            ↑ fallback = 降级实现类：调用超时/异常/熔断时自动走它，而不是抛异常
 public interface PaymentFeignService {
 
     /** 对应支付服务的 GET /payment/get/{id} */
@@ -30,4 +32,8 @@ public interface PaymentFeignService {
     /** 对应支付服务的 POST /payment/create */
     @PostMapping("/payment/create")
     CommonResult<Payment> createPayment(@RequestBody Payment payment);
+
+    /** 对应支付服务的 GET /payment/timeout（第 4 步：模拟慢调用，演示超时降级/熔断） */
+    @GetMapping("/payment/timeout")
+    CommonResult<Payment> timeout();
 }
