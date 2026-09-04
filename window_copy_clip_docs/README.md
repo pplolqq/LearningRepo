@@ -1,125 +1,94 @@
-# Windows 剪贴板写入工具 — 学习笔记
+## 在 Windows 下往剪贴板写文件，让 QQ Ctrl+V 能认——技术选型全景
 
-两个极简 C 程序，演示如何用 Win32 API 往 Windows 剪贴板写数据：
+### 核心原理
 
-| 程序 | 功能 | 剪贴板格式 |
-|------|------|-----------|
-| `cfclip.exe` | 把**一个文件**放入剪贴板，QQ / 微信 / Electron 可按 Ctrl+V 接收 | `CF_HDROP`（文件拖放列表） |
-| `clip666.exe` | 把**一段文本**放入剪贴板 | `CF_UNICODETEXT`（Unicode 文本） |
+> **QQ 认的是格式正确的 `CF_HDROP`，不是非得走 OLE。** 之前绕了大弯以为是 API 路线问题，实际是 DROPFILES 二进制格式写错了（少了 4 字节 `fWide` 字段 + 路径前缀多了空字符串）。
 
 ---
 
-## 一、编译命令
+### 四种方案对比
 
-环境：MinGW-w64（`gcc`）。关键点：用了 `wmain`，必须加 `-municode`。
-
-```bash
-# 文件复制工具
-gcc -O2 -Wall -Wextra -municode cfclip.c -o cfclip.exe -lshell32 -luser32 -lgdi32
-
-# 文本填充工具
-gcc -O2 -Wall -Wextra -municode clip666.c -o clip666.exe -luser32
-```
-
-> 说明：剪贴板、`GlobalAlloc` 等核心 API 在 `kernel32` / `user32` 里，MinGW 默认已链接，`-luser32` 等显式写出只是为了清晰。
+| 方案 | 启动开销 | 兼容性 | 复杂度 | 评价 |
+|------|---------|--------|--------|------|
+| **PowerShell** `SetFileDropList` | ~200-400ms | ✅ 系统原生 | 最低 | 最省心，但慢 |
+| **C** `SetClipboardData(CF_HDROP)` | ~5-15ms | ✅ 系统原生 | 最高 | 最快，但维护成本大 |
+| **Python** `win32clipboard` + 正确 DROPFILES | ~30-50ms | ✅ 格式正确就行 | 中等 | 性价比最高 |
+| **Bash/Git Bash** 直接写 | ❌ 模拟层 | ❌ 不行 | — | 别想了 |
 
 ---
 
-## 二、运行方式
+### 各环境定位
 
-```bash
-# 1) 把文件放入剪贴板（相对路径、绝对路径、空格文件名都行）
-./cfclip.exe "test file.txt"
-./cfclip.exe "C:\Windows\notepad.exe"
-
-# 2) 把文本放入剪贴板
-./clip666.exe
 ```
-
-**验证剪贴板内容**（PowerShell）：
-
-```powershell
-# 验证文件
-Add-Type -AssemblyName System.Windows.Forms
-[System.Windows.Forms.Clipboard]::GetFileDropList()
-
-# 验证文本
-Add-Type -AssemblyName System.Windows.Forms
-[System.Windows.Forms.Clipboard]::GetText()
+┌─────────────────────────────────────────────────────────┐
+│                    Windows 桌面                          │
+├─────────────────────────────────────────────────────────┤
+│  PowerShell    │  最原生，系统信任，启动慢               │
+│  C 可执行文件  │  最原生，最快，编译部署麻烦             │
+│  Python        │  够用，格式正确就通，启动适中           │
+│  Bash/Git Bash │  路径风格怪，模拟层，不适合直接操作     │
+└─────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-
-## 四、核心原理
-
-### 4.1 剪贴板写入的标准流程
-
-两个程序共用同一套「五步走」，只是格式和数据不同：
+### 选型决策树
 
 ```
-GlobalAlloc  ──►  分配一块全局内存（剪贴板要求 HGLOBAL）
-GlobalLock   ──►  拿到可写指针，写入数据
-GlobalUnlock ──►  释放指针
-OpenClipboard ──►  打开剪贴板（同一时刻只允许一个进程）
-EmptyClipboard ──► 清空旧内容
-SetClipboardData ──► 把 HGLOBAL 交给系统（所有权转移，之后不能再 GlobalFree）
-CloseClipboard ──► 关闭
+需要复制文件到剪贴板？
+  │
+  ├─ 在 PowerShell / CMD 里直接用？
+  │     → PowerShell SetFileDropList（最省心）
+  │
+  ├─ 在 Bash/Git Bash 里？
+  │     → 用 Python 做路径解析 + 写入（抹平 Bash 的路径怪癖）
+  │     → 或者 Bash 里调 cfclip.exe（C 版，最快）
+  │     → 实在不行 Bash 里调 PS（慢但稳）
+  │
+  ├─ 对速度有极致要求？
+  │     → C 版 cfclip.exe（5ms）
+  │
+  ├─ 想要代码简洁、好维护？
+  │     → Python 版（~50行核心逻辑）
+  │
+  └─ 跨程序都要认（QQ/微信/Electron）？
+        → 格式正确就行，不需要 OLE
+        → CF_HDROP + 20字节 DROPFILES + fWide=1 + UTF-16LE
 ```
-
-**关键点：`SetClipboardData` 成功后，内存归系统管**，即使程序退出，剪贴板数据仍然有效。只有**失败时**才需要自己 `GlobalFree`。
-
-### 4.2 为什么用 `wmain` 而不是 `main`
-
-- `main` 拿到的是窄字符（ANSI）参数，中文/特殊文件名会丢字符
-- `wmain` 直接拿到宽字符（UTF-16）参数，任何 Unicode 文件名都不会损坏
-- 代价：MinGW 编译时必须加 `-municode`
-
-### 4.3 `CF_HDROP` 的内存布局
-
-这是文件剪贴板的核心，布局必须精确：
-
-```
-+------------------+
-|   DROPFILES 头   |  pFiles / pt / fNC / fWide
-+------------------+
-|  "C:\path\a.txt" |  宽字符文件路径
-|        \0        |  第 1 个 NUL：字符串结束
-|        \0        |  第 2 个 NUL：整个列表结束
-+------------------+
-```
-
-- `pFiles = sizeof(DROPFILES)`：告诉接收方「文件列表从头的末尾开始」
-- `fWide = TRUE`：声明列表用宽字符（否则按 ANSI 解析）
-- **双 NUL 结尾是必须的**：文件列表是一个「以空字符串结尾的字符串数组」，少一个 NUL 接收方就解析不到
-
-### 4.4 `CF_UNICODETEXT` 的格式
-
-就是普通的 UTF-16 字符串 + 结尾 NUL，最简单：
-
-```
-"你好" 的字节序列：[4F 60][7D 59][00 00]
-                   '你'    '好'    \0
-```
-
-### 4.5 踩过的坑
-
-| 坑 | 原因 | 解决 |
-|----|------|------|
-| `DROPFILES` 未声明 | MinGW 的 `shellapi.h` 没导出该结构体 | 手动在源码里定义（字段与 Windows SDK 一致） |
-| 编译链接报 `wmain` 相关错误 | MinGW 默认按 `main` 启动 | 加 `-municode` |
-| 中文/空格文件名损坏 | 用了窄字符 `main` | 改用 `wmain` |
 
 ---
 
-## 五、行为对照
+### 最终推荐
 
-| 场景 | `cfclip.exe` |
-|------|-------------|
-| 相对路径 | `GetFullPathNameW` 基于 cwd 解析为绝对路径 |
-| 空格文件名 | ✅ 宽字符参数原生支持 |
-| 文件不存在 | 报错，`exit=1`，不污染剪贴板 |
-| 目录 | 报错（视为无效） |
-| 无参数 | 打印用法，`exit=1` |
+| 场景 | 推荐 |
+|------|------|
+| 日常命令行工具 | **Python 版**（简洁、正确、跨环境） |
+| 集成到工具链/脚本 | **Python 版** + Bash alias 调 `python cpl.py` |
+| 对延迟敏感（批量/高频） | **C 版 cfclip.exe** |
+| 不想维护任何代码 | **PowerShell 一行命令** |
+| Git Bash 里想 `cpl ./xxx` | Python 做入口 → 内部写剪贴板（或 subprocess 调 cfclip.exe） |
 
-> 附：`/c/xxx` 类 Linux 风格路径在 Git Bash 下能用，是 **MSYS2 在传参前自动转换**的结果，并非程序实现；在 cmd / PowerShell 里直接传 `/c/xxx` 不会生效。
+---
+
+### 关键教训（给自己备忘）
+
+> **1. 底层二进制格式先验证，再怀疑架构层。**
+> **2. `struct.pack` 的字段数 = C 结构体的实际字段数，差一个都不行。**
+> **3. CF_HDROP 的 DROPFILES 是 20 字节，不是 16。**
+> **4. `fWide=1` 是 UTF-16LE 的关键开关。**
+> **5. 文件列表不要以空字符串开头。**
+
+---
+
+### 文件清单（最终可用版）
+
+| 文件 | 用途 |
+|------|------|
+| `cpl.py` | Python 版，日常主力 |
+| `cfclip.c` + `cfclip.exe` | C 版，性能极限 |
+| `cpl.ps1` | PS 版，备用/验证 |
+| `test_clip.c` / `test_clip.exe` | 剪贴板格式验证工具 |
+
+---
+
+一句话收尾：**Python 写对格式就能通，C 最快最原生，PowerShell 最省心，Bash 别直接搞——用 Python 或 C 做后端抹平。**
