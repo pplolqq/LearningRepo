@@ -1,10 +1,10 @@
----
-
 # 需求：cfclip — Windows 剪贴板单文件复制工具（C）
 
 ## 一、目标
 
 写一个 **Windows 命令行程序 `cfclip.exe`**，把**单个文件**以 `CF_HDROP` 格式写入剪贴板，使得 QQ / 微信 / Electron 应用能通过 Ctrl+V 接收。
+
+
 
 等价行为：
 
@@ -31,4 +31,3 @@ cfclip.exe "file with spaces.txt"
 - 文件不存在时报错退出
 
 
----
