@@ -310,6 +310,17 @@ body {
   background: transparent;
 }
 
+/* 文内搜索：全部命中淡黄，当前命中橙色实底 */
+.note-prose .note-search-hit {
+  border-radius: 2px;
+  background: #fde68a;
+}
+
+.note-prose .note-search-hit.is-current {
+  background: #f59e0b;
+  color: #ffffff;
+}
+
 /* 目录跳转后闪一下目标标题，方便看清跳到了哪里 */
 @keyframes outline-flash {
   0% {

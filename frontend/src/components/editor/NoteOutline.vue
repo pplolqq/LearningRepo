@@ -7,11 +7,13 @@ const props = defineProps<{
   editor: Editor | undefined
   /** 正文滚动容器，用于计算「当前位于哪个标题」 */
   scrollContainer: HTMLElement | null
+  /** 收起态：只留一条窄轨，点图标展开 */
+  collapsed: boolean
 }>()
 
 const emit = defineEmits<{
   jump: [pos: number]
-  collapse: []
+  toggle: []
 }>()
 
 /**
@@ -78,20 +80,29 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <nav class="flex w-52 shrink-0 flex-col border-r border-stone-200 bg-stone-50/60">
-    <div class="flex h-9 shrink-0 items-center justify-between pr-1.5 pl-3">
-      <span class="text-[11px] font-medium tracking-wide text-stone-400">目录</span>
+  <!-- 目录是常驻侧栏：收起时退化成一条窄轨，展开图标始终在最上方 -->
+  <nav
+    class="flex shrink-0 flex-col overflow-hidden border-r border-stone-200 bg-stone-50/60"
+    :class="collapsed ? 'w-9' : 'w-52'"
+  >
+    <div
+      class="flex h-12 shrink-0 items-center"
+      :class="collapsed ? 'justify-center' : 'justify-between pr-2 pl-3'"
+    >
+      <span v-if="!collapsed" class="text-sm font-medium tracking-wide text-stone-500">
+        目录
+      </span>
       <button
         type="button"
-        class="rounded px-1.5 py-0.5 text-sm leading-none text-stone-400 hover:bg-stone-200 hover:text-stone-600"
-        title="收起目录"
-        @click="emit('collapse')"
+        class="rounded px-1.5 py-1 text-base leading-none text-stone-400 hover:bg-stone-200 hover:text-stone-600"
+        :title="collapsed ? '展开目录（Ctrl+,）' : '收起目录（Ctrl+,）'"
+        @click="emit('toggle')"
       >
-        «
+        {{ collapsed ? '≡' : '«' }}
       </button>
     </div>
 
-    <div class="min-h-0 flex-1 overflow-y-auto pb-8">
+    <div v-if="!collapsed" class="min-h-0 flex-1 overflow-y-auto pb-8">
       <p v-if="items.length === 0" class="px-3 py-1 text-[11px] leading-relaxed text-stone-400">
         本文档还没有标题。<br />用 <code class="rounded bg-stone-200 px-1"># </code> 开头写一行就会出现在这里。
       </p>

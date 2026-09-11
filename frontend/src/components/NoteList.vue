@@ -77,13 +77,13 @@ function summary(text: string): string {
 
 <template>
   <div class="flex min-h-0 flex-col border-t border-stone-200">
-    <div class="flex items-center justify-between px-3 pb-1 pt-2">
-      <span class="truncate text-[11px] font-medium uppercase tracking-wide text-stone-400">
+    <div class="flex items-center justify-between px-3 py-2">
+      <span class="truncate text-sm font-medium tracking-wide text-stone-600">
         {{ scopeLabel }}<span v-if="notesLoading"> · 加载中</span>
       </span>
       <button
         type="button"
-        class="rounded px-1 text-xs text-stone-500 hover:bg-stone-200"
+        class="rounded px-1.5 text-base leading-none text-stone-500 hover:bg-stone-200"
         title="新建笔记"
         @click="createNote"
       >

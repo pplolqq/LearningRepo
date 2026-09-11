@@ -32,7 +32,7 @@ async function createNote(): Promise<void> {
         <button
           type="button"
           class="rounded-md px-1.5 py-1 text-xs text-stone-500 hover:bg-stone-200"
-          title="折叠左栏"
+          title="折叠左栏（Ctrl+/）"
           @click="store.toggleSidebar()"
         >
           ◀

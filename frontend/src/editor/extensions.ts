@@ -9,6 +9,7 @@ import { Superscript } from '@tiptap/extension-superscript'
 import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight'
 import { common, createLowlight } from 'lowlight'
 import { SlashCommand } from '@/components/editor/slashCommand'
+import { SearchHighlight } from '@/editor/searchHighlight'
 
 /** highlight.js 的常用语法集（lowlight v3） */
 const lowlight = createLowlight(common)
@@ -26,6 +27,7 @@ const lowlight = createLowlight(common)
  * | bold, italic, strike, code, underline, link | StarterKit（v3 已内置 link / underline） |
  * | highlight | @tiptap/extension-highlight |
  * | subscript / superscript | @tiptap/extension-subscript / -superscript |
+ * | （无） | SearchHighlight（纯插件，不注册节点 / mark，只画搜索结果高亮） |
  *
  * 注意：白名单里没有 textAlign / color / textStyle 等样式扩展，故一律不注册。
  */
@@ -63,5 +65,6 @@ export function buildExtensions(): Extensions {
     Image.configure({ inline: false, allowBase64: false }),
     CodeBlockLowlight.configure({ lowlight }),
     SlashCommand,
+    SearchHighlight,
   ]
 }

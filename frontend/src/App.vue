@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onBeforeUnmount, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useNoteStore } from '@/stores/noteStore'
 import AppSidebar from '@/components/AppSidebar.vue'
@@ -9,9 +9,21 @@ import TiptapEditor from '@/components/editor/TiptapEditor.vue'
 const store = useNoteStore()
 const { currentNote, sidebarCollapsed, errorMessage, notesLoading } = storeToRefs(store)
 
+/** Ctrl+/ 折叠 / 展开左栏（笔记侧边栏）。放在 App 层，这样没有打开笔记时也能用 */
+function onKeydown(event: KeyboardEvent): void {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return
+  if (event.key !== '/') return
+  event.preventDefault()
+  event.stopPropagation()
+  store.toggleSidebar()
+}
+
 onMounted(() => {
   void store.init()
+  window.addEventListener('keydown', onKeydown, true)
 })
+
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown, true))
 </script>
 
 <template>
@@ -23,7 +35,7 @@ onMounted(() => {
       v-else
       type="button"
       class="flex w-8 shrink-0 items-start justify-center border-r border-stone-200 bg-stone-100 pt-3 text-xs text-stone-500 hover:bg-stone-200"
-      title="展开左栏"
+      title="展开左栏（Ctrl+/）"
       @click="store.toggleSidebar()"
     >
       ▶

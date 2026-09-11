@@ -2,7 +2,13 @@
 import { computed, ref } from 'vue'
 import type { Editor } from '@tiptap/core'
 
-const props = defineProps<{ editor: Editor | undefined }>()
+const props = defineProps<{
+  editor: Editor | undefined
+  /** 固定态：工具条常驻；非固定态收起，鼠标移到标题下方再浮现 */
+  pinned: boolean
+}>()
+
+const emit = defineEmits<{ togglePin: [] }>()
 
 /** 读取 isActive：Editor 的 state 是 Vue 的 customRef，在 computed 里读即自动追踪重渲染 */
 const active = computed(() => {
@@ -191,5 +197,23 @@ function removeLink(): void {
         移除
       </button>
     </div>
+
+    <!-- 固定 / 收起（贴最右边）。收起后工具条会藏起来，鼠标移到标题下方再浮现 -->
+    <span class="ml-auto flex items-center">
+      <span :class="divider" />
+      <button
+        type="button"
+        :class="cls(props.pinned)"
+        :disabled="disabled"
+        :title="
+          props.pinned
+            ? '取消固定：工具条收起，鼠标移到标题下方再浮现'
+            : '固定工具条，让它常驻'
+        "
+        @click="emit('togglePin')"
+      >
+        <span :class="props.pinned ? '' : 'inline-block rotate-45 opacity-60'">📌</span>
+      </button>
+    </span>
   </div>
 </template>
