@@ -1,0 +1,326 @@
+@import 'tailwindcss';
+
+/* ------------------------------------------------------------------ 全局 */
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  color: #1c1917;
+  background: #ffffff;
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* 细滚动条，自用工具没必要占地方 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #d6d3d1 transparent;
+}
+
+/* ------------------------------------------------- 编辑器内容（ProseMirror） */
+
+.note-prose {
+  outline: none;
+  font-size: 16px;
+  line-height: 1.75;
+  color: #1c1917;
+  word-break: break-word;
+}
+
+.note-prose:focus {
+  outline: none;
+}
+
+.note-prose ::selection {
+  background: #dbeafe;
+}
+
+/* Tailwind preflight 会清掉所有默认边距，这里按文档语义补回来 */
+.note-prose > :first-child {
+  margin-top: 0;
+}
+
+.note-prose p {
+  margin: 0.7em 0;
+}
+
+.note-prose h1,
+.note-prose h2,
+.note-prose h3,
+.note-prose h4,
+.note-prose h5,
+.note-prose h6 {
+  margin: 1.4em 0 0.55em;
+  font-weight: 650;
+  line-height: 1.35;
+  color: #171412;
+  /* 目录跳转时不要贴到容器顶边 */
+  scroll-margin-top: 14px;
+}
+
+.note-prose h1 {
+  font-size: 1.75rem;
+  letter-spacing: -0.01em;
+}
+
+.note-prose h2 {
+  font-size: 1.4rem;
+  letter-spacing: -0.01em;
+}
+
+.note-prose h3 {
+  font-size: 1.175rem;
+}
+
+.note-prose h4 {
+  font-size: 1.05rem;
+}
+
+.note-prose h5,
+.note-prose h6 {
+  font-size: 1rem;
+  color: #57534e;
+}
+
+.note-prose strong {
+  font-weight: 650;
+}
+
+/* 列表：preflight 清掉了 list-style，这里恢复 */
+.note-prose ul {
+  margin: 0.7em 0;
+  padding-left: 1.5em;
+  list-style: disc;
+}
+
+.note-prose ol {
+  margin: 0.7em 0;
+  padding-left: 1.5em;
+  list-style: decimal;
+}
+
+.note-prose li {
+  margin: 0.2em 0;
+}
+
+.note-prose li > p {
+  margin: 0;
+}
+
+.note-prose li > ul,
+.note-prose li > ol {
+  margin: 0.2em 0;
+}
+
+/* 待办列表 */
+.note-prose ul[data-type='taskList'] {
+  margin: 0.7em 0;
+  padding-left: 0.15em;
+  list-style: none;
+}
+
+.note-prose ul[data-type='taskList'] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.3em 0;
+}
+
+.note-prose ul[data-type='taskList'] li > label {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  height: 1.75em;
+  user-select: none;
+}
+
+.note-prose ul[data-type='taskList'] li > label input[type='checkbox'] {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: #4f46e5;
+  cursor: pointer;
+}
+
+.note-prose ul[data-type='taskList'] li > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.note-prose ul[data-type='taskList'] li > div > p {
+  margin: 0;
+}
+
+.note-prose ul[data-type='taskList'] li[data-checked='true'] > div {
+  color: #a8a29e;
+  text-decoration: line-through;
+}
+
+/* 引用 */
+.note-prose blockquote {
+  margin: 0.9em 0;
+  padding: 0.1em 0 0.1em 0.95rem;
+  border-left: 3px solid #d6d3d1;
+  color: #57534e;
+}
+
+/* 行内代码 / 代码块 */
+.note-prose code {
+  padding: 0.15em 0.35em;
+  border-radius: 4px;
+  background: #f1f0ef;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 0.875em;
+}
+
+.note-prose pre {
+  margin: 0.9em 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid #e7e5e4;
+  border-radius: 8px;
+  background: #f6f8fa;
+  overflow-x: auto;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.note-prose pre code {
+  padding: 0;
+  background: none;
+  font-size: inherit;
+}
+
+.note-prose pre code.hljs {
+  padding: 0;
+  background: none;
+}
+
+/* 分割线 */
+.note-prose hr {
+  margin: 1.6em 0;
+  border: none;
+  border-top: 1px solid #e7e5e4;
+}
+
+/* 图片（只支持外链 URL，不做上传） */
+.note-prose img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+
+.note-prose img.ProseMirror-selectednode {
+  outline: 2px solid #6366f1;
+  outline-offset: 1px;
+}
+
+/* 链接 */
+.note-prose a {
+  color: #4f46e5;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+/* 高亮 / 上下标 */
+.note-prose mark {
+  padding: 0 2px;
+  border-radius: 2px;
+  background: #fde68a;
+  color: inherit;
+}
+
+.note-prose sub,
+.note-prose sup {
+  font-size: 0.75em;
+  line-height: 0;
+}
+
+/* 表格 */
+.note-prose .tableWrapper {
+  margin: 0.9em 0;
+  overflow-x: auto;
+}
+
+.note-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  overflow: hidden;
+  margin: 0;
+}
+
+.note-prose th,
+.note-prose td {
+  position: relative;
+  min-width: 4rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #e0dedd;
+  vertical-align: top;
+}
+
+.note-prose th {
+  background: #fafaf9;
+  font-weight: 600;
+  text-align: left;
+}
+
+.note-prose th > p,
+.note-prose td > p {
+  margin: 0;
+}
+
+.note-prose .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: rgb(99 102 241 / 0.12);
+  pointer-events: none;
+}
+
+.note-prose .column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  bottom: 0;
+  width: 4px;
+  background: #6366f1;
+  pointer-events: none;
+}
+
+.note-prose.resize-cursor {
+  cursor: col-resize;
+}
+
+/* 光标 / gapcursor（表格、图片之间的空位） */
+.ProseMirror-gapcursor::after {
+  border-top: 1px solid #1c1917;
+}
+
+.ProseMirror-hideselection *::selection {
+  background: transparent;
+}
+
+/* 目录跳转后闪一下目标标题，方便看清跳到了哪里 */
+@keyframes outline-flash {
+  0% {
+    background-color: rgb(199 210 254 / 0.75);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.note-prose .outline-flash {
+  border-radius: 4px;
+  animation: outline-flash 900ms ease-out;
+}

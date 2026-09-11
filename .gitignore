@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# 数据库（含 WAL 伴随文件）
+backend/data/*.db
+backend/data/*.db-wal
+backend/data/*.db-shm
+
+# Node
+node_modules/
+dist/
+.vite/
+.tmp-check/
+*.local
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+*.log
