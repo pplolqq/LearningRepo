@@ -26,7 +26,7 @@ export function extractErrorMessage(error: unknown): string {
     const detail = body?.detail
     if (typeof detail === 'string' && detail.trim() !== '') return detail
     if (error.response) return `请求失败（HTTP ${error.response.status}）`
-    return '无法连接后端服务，请确认 127.0.0.1:8000 已启动'
+    return '无法连接后端服务，请确认 后端服务 已启动'
   }
   if (error instanceof Error) return error.message
   return String(error)

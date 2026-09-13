@@ -12,12 +12,12 @@ export default defineConfig({
   },
   server: {
     host: '127.0.0.1',
-    port: 5173,
+    port: Number(process.env.VITE_PORT) || 5173,
     strictPort: true,
     // 前端统一请求相对路径 /api/...，由 dev server 代理到后端
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8000',
+        target: `http://127.0.0.1:${Number(process.env.VITE_BACKEND_PORT) || 8000}`,
         changeOrigin: true,
       },
     },
