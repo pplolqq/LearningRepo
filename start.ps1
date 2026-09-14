@@ -15,4 +15,4 @@ $url = "http://127.0.0.1:$($env:GATEWAY_PORT)/"
 Write-Host "网关地址: $url" -ForegroundColor Cyan
 Start-Process $url | Out-Null
 
-node server.js
+node run_gateway_server.js
