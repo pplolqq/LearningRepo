@@ -14,7 +14,7 @@ cd C:\Users\zrj21\Desktop\Agent\gateway_local_tool
 
 ```bash
 # bash / WSL / macOS
-./start.sh
+./run.sh
 ```
 
 浏览器会自动打开 <http://127.0.0.1:5200/>。也可以直接 `node run_gateway_server.js`。
@@ -29,6 +29,8 @@ cd C:\Users\zrj21\Desktop\Agent\gateway_local_tool
 | 左侧列表 | 在嵌着的服务之间切换 |
 | 顶栏「重新加载」 | 重建 iframe，等于刷新当前服务 |
 | 顶栏「在新标签打开 ↗」 | 当前服务开新标签页 |
+| 卡片上的「启动」 | 服务离线时才出现，调本机启动脚本把它拉起来 |
+| 工作台里的「本地启动」 | 同上；服务起来后下面的页面会自己加载进来 |
 | `/` | 聚焦搜索框（只在首页） |
 | 输入关键字 | 按名称、描述、端口、标签实时过滤 |
 | 回车 | 打开过滤后的第一个服务 |
@@ -40,6 +42,32 @@ cd C:\Users\zrj21\Desktop\Agent\gateway_local_tool
 状态灯每 5 秒自动刷新（标签页在后台时暂停，切回来立即刷新）。绿灯表示端口有人监听，红灯表示服务还没启动——红灯卡片照样能点，进来会看到「服务还没启动」的提示，等服务起来后会自动把页面加载进来，不用手动刷新。
 
 当前地址带在 hash 里（`#/note`），刷新浏览器或直接贴着这个地址打开都会回到同一个服务上。
+
+## 启动按钮
+
+服务没起来的时候，卡片上会多一个「启动」，工作台的占位提示里也能点「本地启动」。点下去就是让后端替你跑一次启动脚本，不用再切到终端。
+
+脚本用的是现成的 `run_wsl.sh`，只是给它加了个参数分发，两个服务各自的启动函数原样没动：
+
+```bash
+bash run_wsl.sh          # 不带参数，两个都起（原来的行为）
+bash run_wsl.sh note     # 只起 noteTp
+bash run_wsl.sh seekfile # 只起 seekFile
+```
+
+哪个服务对应哪个参数写在 `services.json` 的 `startArgs` 里，所以加新服务只要在脚本里加一个分支、再在配置里写上参数。
+
+点完之后有三种结果：
+
+脚本很快跑完并正常退出 → 提示「启动脚本执行完了」。
+
+进程一直挂在那（dev server 常驻的情况）→ 8 秒后当作成功，提示「已发起启动，等端口起来…」，接下来靠端口探活确认，绿灯一亮下面的页面会自己加载，不用手动刷新。
+
+脚本报错退出、或者 `bash` 根本拉不起来 → 提示「启动失败」，工作台的占位里会把退出码和脚本输出摊出来，方便看是哪一步挂了。
+
+同一个服务在启动过程中会被锁住，连点会提示「正在启动中，稍等一下」，避免拉出两份。
+
+一点安全提醒：这个按钮等于给页面开了「在本机执行脚本」的口子。默认只监听 `127.0.0.1` 没问题，但如果你把 `GATEWAY_HOST` 设成 `0.0.0.0` 让局域网能访问，同网段的人也能点这个按钮。
 
 ## 关于 iframe 的几个坑
 
@@ -79,6 +107,7 @@ localhost 的不同端口算「同站不同源」。所以 cookie 不会被当�
 | `url` | 否 | 填了就优先用它，适合指向别的机器或外部地址；填了 `url` 就不做端口探活 |
 | `scheme` | 否 | 默认 `http`，目标是 https 就填 `https` |
 | `envPort` | 否 | 用哪个环境变量覆盖 `port`，例如 `NOTE_PORT` |
+| `startArgs` | 否 | 传给启动脚本的参数，例如 `["note"]`；不填就没有启动按钮 |
 | `path` | 否 | 默认 `/`，例如填 `/docs` |
 | `probeHost` | 否 | 探活用的地址，默认 `127.0.0.1` |
 | `color` | 否 | 卡片强调色 |
@@ -95,9 +124,14 @@ localhost 的不同端口算「同站不同源」。所以 cookie 不会被当�
 | `GATEWAY_CONFIG` | `./services.json` | 配置文件路径 |
 | `GATEWAY_PROBE_TIMEOUT` | `1200` | 单次探活超时（毫秒） |
 | `GATEWAY_EMBED_CACHE` | `30000` | 「能不能被嵌入」的检测结果缓存多久（毫秒） |
+| `GATEWAY_START_SCRIPT` | 取 `gateway.startScript` | 启动脚本路径，默认 `run_wsl.sh` |
+| `GATEWAY_BASH` | 取 `gateway.bash` | 用哪个 bash 跑启动脚本，默认找 PATH 里的 `bash` |
+| `GATEWAY_START_WAIT` | `8000` | 等启动脚本「是常驻还是跑完」的观察窗口（毫秒） |
 | `NOTE_PORT` / `SEEKFILE_PORT` | `5202` / `9993` | 覆盖对应服务的端口 |
 
 想换默认端口，直接改 `services.json` 里的 `gateway.port`；`GATEWAY_PORT` 优先级更高。
+
+关于 `GATEWAY_BASH`：这台机器上 PATH 里的 `bash` 是 Git Bash（`E:\DEPENDENCES\Git\usr\bin\bash.exe`），`run_wsl.sh` 本来就是给 Git Bash 写的（它内部再调 `wsl`，`start_seek_file` 用的是 `$HOME/Desktop/...` 这种 Git Bash 路径）。如果哪天你把网关改成在 WSL 里跑，`bash` 会变成 WSL 的 Linux bash，`$HOME` 就成了 `/home/...`，脚本会找不到 seekFile——那时候把 `GATEWAY_BASH` 指到 Git Bash 的绝对路径（或者改脚本里的路径）即可。
 
 ## 接口
 
@@ -106,6 +140,7 @@ localhost 的不同端口算「同站不同源」。所以 cookie 不会被当�
 | `GET` | `/api/config` | 网关标题 + 服务列表（已套用环境变量覆盖） |
 | `GET` | `/api/status` | 各服务探活结果：`{ online, ms }` |
 | `GET` | `/api/embed?id=note` | 目标能不能被 iframe 嵌入：`{ embeddable, reason }`，`reason` 取值 `null` / `x-frame-options` / `csp-frame-ancestors` / `unreachable` |
+| `POST` | `/api/start?id=note` | 跑启动脚本。成功 `{ ok: true, running \| exited, output }`，失败 `{ ok: false, error, output }` |
 | `GET` | `/api/health` | 网关自身存活检查 |
 
 端口探活和嵌入检测都放在后端做：浏览器直接 fetch 另一个端口会被 CORS 拦住，后端做没这个问题，也不依赖页面是从 `localhost` 还是局域网 IP 打开的。
