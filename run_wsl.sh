@@ -15,14 +15,20 @@ wsl -e bash -lc "
 "
 }
 
-start_file(){
-    code "$HOME/Desktop/Agent/seekFile"
-}
-
 start_seek_file(){
     cd "$HOME/Desktop/Agent/seekFile"
     bash run.sh
 }
-start_noteTp
-start_seek_file
 
+# 用法: bash run_wsl.sh [note|seekfile|all]
+# 不带参数 = all，保持原来的行为；带参数则只启动指定的那一个
+case "${1:-all}" in
+    note)     start_noteTp ;;
+    seekfile) start_seek_file ;;
+    all)      start_noteTp; start_seek_file ;;
+    *)
+        echo "未知的服务: $1" >&2
+        echo "用法: bash run_wsl.sh [note|seekfile|all]" >&2
+        exit 2
+        ;;
+esac

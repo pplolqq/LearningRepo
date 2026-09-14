@@ -2,7 +2,9 @@
   "gateway": {
     "title": "本地服务网关",
     "subtitle": "一键跳转到本机已启动的前端服务",
-    "port": 5200
+    "port": 5200,
+    "startScript": "run_wsl.sh",
+    "bash": ""
   },
   "services": [
     {
@@ -11,6 +13,7 @@
       "description": "笔记应用前端（Vite dev server），后端接口在 10101。",
       "port": 5202,
       "envPort": "NOTE_PORT",
+      "startArgs": ["note"],
       "color": "#6ea8fe",
       "tags": ["Note", "Vite"]
     },
@@ -20,6 +23,7 @@
       "description": "本地文件检索服务页面。",
       "port": 9993,
       "envPort": "SEEKFILE_PORT",
+      "startArgs": ["seekfile"],
       "color": "#5fd7a6",
       "tags": ["SeekFile"]
     }
