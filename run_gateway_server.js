@@ -8,12 +8,14 @@
  *   GET /api/config      -> 网关信息 + 服务列表（已套用环境变量端口覆盖）
  *   GET /api/status      -> 逐个 TCP 探活，返回每个服务的在线状态与耗时
  *   GET /api/health      -> 网关自身存活检查
+ *   GET /api/embed?id=x  -> 目标页面是否允许被 iframe 嵌入（看 X-Frame-Options / CSP）
  *
  * 探活放在后端做：浏览器直连另一个端口会被 CORS 拦，后端探活不受影响，
  * 也不依赖页面是从 localhost 还是局域网 IP 打开的。
  */
 
 const http = require('node:http');
+const https = require('node:https');
 const net = require('node:net');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -27,6 +29,7 @@ const HOST = process.env.GATEWAY_HOST || '127.0.0.1';
 
 const PROBE_TIMEOUT_MS = Number(process.env.GATEWAY_PROBE_TIMEOUT || 1200);
 const STATUS_CACHE_MS = 1500;
+const EMBED_CACHE_MS = Number(process.env.GATEWAY_EMBED_CACHE || 30000);
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -69,6 +72,7 @@ function normalizeService(service) {
     port: Number.isFinite(port) ? port : null,
     path: service.path || '/',
     url,
+    scheme: service.scheme === 'https' ? 'https' : 'http',
     probeHost: service.probeHost || '127.0.0.1',
     color: service.color || '#6ea8fe',
     tags: Array.isArray(service.tags) ? service.tags : [],
@@ -129,6 +133,67 @@ async function collectStatus(services) {
     })
   );
   return Object.fromEntries(entries);
+}
+
+/* ------------------------------------------------- 目标页面能否被 iframe 嵌入 */
+
+const embedCache = new Map(); // service id -> { at, embeddable, reason }
+
+function fetchHead(url, timeout) {
+  return new Promise((resolve) => {
+    const client = url.startsWith('https:') ? https : http;
+    let settled = false;
+    const done = (payload) => {
+      if (settled) return;
+      settled = true;
+      resolve(payload);
+    };
+
+    let request;
+    try {
+      request = client.get(url, { timeout }, (response) => {
+        const headers = response.headers;
+        response.destroy();
+        done({ ok: true, headers });
+      });
+    } catch (err) {
+      done({ ok: false, error: err.code || err.message });
+      return;
+    }
+
+    request.on('timeout', () => {
+      request.destroy();
+      done({ ok: false, error: 'timeout' });
+    });
+    request.on('error', (err) => done({ ok: false, error: err.code || err.message }));
+  });
+}
+
+// 返回 null 表示可以嵌入，否则返回被拦住的原因
+function judgeEmbeddable(headers) {
+  const xfo = String(headers['x-frame-options'] || '').toLowerCase();
+  if (xfo.includes('deny') || xfo.includes('sameorigin')) return 'x-frame-options';
+
+  const csp = String(headers['content-security-policy'] || '').toLowerCase();
+  const match = csp.match(/frame-ancestors([^;]*)/);
+  // 只认显式通配；'self' 之类一律当成拦我们（不同端口 = 不同源）
+  if (match && match[1].trim() && !match[1].includes('*')) return 'csp-frame-ancestors';
+
+  return null;
+}
+
+async function checkEmbed(service) {
+  const cached = embedCache.get(service.id);
+  if (cached && Date.now() - cached.at < EMBED_CACHE_MS) return cached;
+
+  const url = `${service.scheme}://${service.probeHost}:${service.port}/`;
+  const response = await fetchHead(url, PROBE_TIMEOUT_MS);
+  const reason = response.ok ? judgeEmbeddable(response.headers) : 'unreachable';
+  // 探不到就当我们没有证据证明它被拦，交给浏览器去试
+  const result = { at: Date.now(), embeddable: reason === null || reason === 'unreachable', reason };
+
+  embedCache.set(service.id, result);
+  return result;
 }
 
 /* ------------------------------------------------------------------ HTTP */
@@ -199,6 +264,22 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (url.pathname === '/api/embed') {
+    const id = url.searchParams.get('id');
+    const service = config.services.find((item) => item.id === id);
+    if (!service) {
+      sendJson(res, 404, { error: 'unknown service' });
+      return;
+    }
+    const result = await checkEmbed(service);
+    sendJson(res, 200, {
+      id: service.id,
+      embeddable: result.embeddable,
+      reason: result.reason
+    });
+    return;
+  }
+
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405).end('Method Not Allowed');
     return;
@@ -226,7 +307,7 @@ server.listen(port, HOST, () => {
 
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`端口 ${port} 已被占用，可用 GATEWAY_PORT=5201 node server.js 换一个端口。`);
+    console.error(`端口 ${port} 已被占用，可用 GATEWAY_PORT=5201 node run_gateway_server.js 换一个端口。`);
   } else {
     console.error(err);
   }
