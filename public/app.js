@@ -1,15 +1,21 @@
 'use strict';
 
 const REFRESH_MS = 5000;
+const EMBED_TTL_MS = 30000;
 
 const state = {
   services: [],
   status: {},
   visible: [],
-  filter: ''
+  filter: '',
+  activeId: null,
+  embed: {},
+  mounted: { id: null, mode: null } // mode: frame | offline | blocked
 };
 
 const el = {
+  home: document.getElementById('home'),
+  workspace: document.getElementById('workspace'),
   title: document.getElementById('title'),
   subtitle: document.getElementById('subtitle'),
   onlineCount: document.getElementById('online-count'),
@@ -18,13 +24,29 @@ const el = {
   grid: document.getElementById('grid'),
   empty: document.getElementById('empty'),
   checkedAt: document.getElementById('checked-at'),
-  tpl: document.getElementById('card-tpl')
+  tpl: document.getElementById('card-tpl'),
+  sideList: document.getElementById('side-list'),
+  sideChecked: document.getElementById('side-checked'),
+  sideRefresh: document.getElementById('side-refresh'),
+  tplSide: document.getElementById('side-tpl'),
+  barDot: document.getElementById('bar-dot'),
+  barName: document.getElementById('bar-name'),
+  barUrl: document.getElementById('bar-url'),
+  barState: document.getElementById('bar-state'),
+  actReload: document.getElementById('act-reload'),
+  actCopy: document.getElementById('act-copy'),
+  actNewtab: document.getElementById('act-newtab'),
+  frameWrap: document.getElementById('frame-wrap')
 };
 
 /* ------------------------------------------------------------- 小工具 */
 
-function cardOf(id) {
-  return el.grid.querySelector(`[data-id="${CSS.escape(id)}"]`);
+function byId(id) {
+  return state.services.find((service) => service.id === id) || null;
+}
+
+function activeService() {
+  return byId(state.activeId);
 }
 
 function resolveUrl(service) {
@@ -39,6 +61,18 @@ function formatTime(iso) {
   const date = iso ? new Date(iso) : new Date();
   const pad = (value) => String(value).padStart(2, '0');
   return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function dotState(info) {
+  if (!info) return 'checking';
+  if (info.online === null) return 'external';
+  return info.online ? 'online' : 'offline';
+}
+
+function stateLabel(info) {
+  if (!info) return '检测中…';
+  if (info.online === null) return '外部链接';
+  return info.online ? `在线 ${info.ms}ms` : '未启动';
 }
 
 function toast(message) {
@@ -71,7 +105,18 @@ async function copyText(text) {
   }
 }
 
-/* -------------------------------------------------------------- 渲染 */
+/* ---------------------------------------------------------- 首页卡片 */
+
+function paintCard(card, info) {
+  card.querySelector('.dot').dataset.state = dotState(info);
+
+  const label = card.querySelector('.state');
+  label.textContent = stateLabel(info);
+  if (info && info.online !== null) label.dataset.state = info.online ? 'online' : 'offline';
+  else label.removeAttribute('data-state');
+
+  card.classList.toggle('offline', Boolean(info) && info.online === false);
+}
 
 function buildCard(service) {
   const node = el.tpl.content.firstElementChild.cloneNode(true);
@@ -94,7 +139,21 @@ function buildCard(service) {
     tagBox.appendChild(span);
   }
 
-  node.querySelector('.copy').addEventListener('click', async (event) => {
+  // 普通左键：在网关里嵌着打开；带修饰键的点击交回浏览器（新标签）
+  node.addEventListener('click', (event) => {
+    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    if (event.button !== 0) return;
+    event.preventDefault();
+    enterService(service.id);
+  });
+
+  node.querySelector('[data-act="newtab"]').addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    window.open(url, '_blank', 'noopener');
+  });
+
+  node.querySelector('[data-act="copy"]').addEventListener('click', async (event) => {
     event.preventDefault();
     event.stopPropagation();
     const button = event.currentTarget;
@@ -108,43 +167,6 @@ function buildCard(service) {
   });
 
   return node;
-}
-
-function paintStatus(card, info) {
-  const dot = card.querySelector('.dot');
-  const label = card.querySelector('.state');
-
-  if (!info) {
-    label.textContent = '检测中…';
-    return;
-  }
-
-  if (info.online === null) {
-    dot.dataset.state = 'external';
-    label.removeAttribute('data-state');
-    label.textContent = '外部链接';
-    card.classList.remove('offline');
-    return;
-  }
-
-  dot.dataset.state = info.online ? 'online' : 'offline';
-  label.dataset.state = info.online ? 'online' : 'offline';
-  label.textContent = info.online ? `在线 ${info.ms}ms` : '未启动';
-  card.classList.toggle('offline', !info.online);
-}
-
-function updateCounter() {
-  const probes = state.services.filter((service) => state.status[service.id]?.online !== null
-    && state.status[service.id] !== undefined);
-  const online = probes.filter((service) => state.status[service.id].online).length;
-
-  if (!probes.length) {
-    el.onlineCount.textContent = '在线 –';
-    el.onlineCount.classList.remove('ready');
-    return;
-  }
-  el.onlineCount.textContent = `在线 ${online} / ${probes.length}`;
-  el.onlineCount.classList.toggle('ready', online > 0);
 }
 
 function applyFilter() {
@@ -168,14 +190,238 @@ function applyFilter() {
   el.empty.hidden = state.visible.length > 0;
 
   for (const service of state.services) {
-    const card = cardOf(service.id);
-    if (card) paintStatus(card, state.status[service.id]);
+    const card = el.grid.querySelector(`[data-id="${CSS.escape(service.id)}"]`);
+    if (card) paintCard(card, state.status[service.id]);
   }
 
   updateCounter();
 }
 
-/* -------------------------------------------------------------- 数据 */
+function updateCounter() {
+  const probes = state.services.filter((service) => state.status[service.id]
+    && state.status[service.id].online !== null);
+  const online = probes.filter((service) => state.status[service.id].online).length;
+
+  if (!probes.length) {
+    el.onlineCount.textContent = '在线 –';
+    el.onlineCount.classList.remove('ready');
+    return;
+  }
+  el.onlineCount.textContent = `在线 ${online} / ${probes.length}`;
+  el.onlineCount.classList.toggle('ready', online > 0);
+}
+
+/* ------------------------------------------------------------ 侧栏 */
+
+function renderSidebar() {
+  const nodes = state.services.map((service) => {
+    const node = el.tplSide.content.firstElementChild.cloneNode(true);
+    node.href = `#/${service.id}`;
+    node.dataset.id = service.id;
+    node.style.setProperty('--tint', service.color);
+    node.querySelector('.side-name').textContent = service.name;
+    node.querySelector('.side-port').textContent = service.port
+      ? `:${service.port}`
+      : (service.url || '');
+    return node;
+  });
+  el.sideList.replaceChildren(...nodes);
+}
+
+function paintSidebar() {
+  for (const item of el.sideList.children) {
+    const id = item.dataset.id;
+    item.classList.toggle('active', id === state.activeId);
+    item.querySelector('.dot').dataset.state = dotState(state.status[id]);
+  }
+}
+
+function paintBar() {
+  const service = activeService();
+  if (!service) return;
+  const info = state.status[service.id];
+
+  el.barDot.dataset.state = dotState(info);
+  el.barName.textContent = service.name;
+  el.barUrl.textContent = resolveUrl(service);
+  el.barState.textContent = stateLabel(info);
+  if (info && info.online !== null) el.barState.dataset.state = info.online ? 'online' : 'offline';
+  else el.barState.removeAttribute('data-state');
+}
+
+/* ---------------------------------------------------------- 工作台 */
+
+// 每个服务只问一次「能不能被嵌入」，结果缓存 30 秒
+async function ensureEmbed(id) {
+  const cached = state.embed[id];
+  if (cached && Date.now() - cached.at < EMBED_TTL_MS) return cached;
+
+  try {
+    const res = await fetch(`/api/embed?id=${encodeURIComponent(id)}`, { cache: 'no-store' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const entry = { embeddable: data.embeddable !== false, reason: data.reason || null, at: Date.now() };
+    state.embed[id] = entry;
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+let mountToken = 0;
+
+function renderFrame(service) {
+  const frame = document.createElement('iframe');
+  frame.className = 'frame';
+  frame.src = resolveUrl(service);
+  frame.title = service.name;
+
+  const loading = document.createElement('div');
+  loading.className = 'frame-loading';
+  loading.textContent = '加载中…';
+
+  let settled = false;
+  const hideLoading = () => {
+    if (settled) return;
+    settled = true;
+    loading.remove();
+  };
+  frame.addEventListener('load', hideLoading);
+  setTimeout(hideLoading, 15000);
+
+  state.mounted = { id: service.id, mode: 'frame' };
+  el.frameWrap.replaceChildren(loading, frame);
+}
+
+function renderPlaceholder(mode, service, reason) {
+  const url = resolveUrl(service);
+  const box = document.createElement('div');
+  box.className = 'placeholder';
+
+  const title = document.createElement('h3');
+  const desc = document.createElement('p');
+  const actions = document.createElement('div');
+  actions.className = 'ph-actions';
+
+  const primary = document.createElement('button');
+  primary.className = 'ghost';
+  primary.type = 'button';
+
+  const secondary = document.createElement('button');
+  secondary.className = 'solid';
+  secondary.type = 'button';
+  secondary.textContent = '在新标签打开 ↗';
+
+  if (mode === 'offline') {
+    title.textContent = '服务还没启动';
+    desc.textContent = `端口 ${service.port} 没有响应。等它起来后会在这里自动加载，不用手动刷新。`;
+    primary.textContent = '立即重试';
+  } else {
+    title.textContent = '这个页面不允许被嵌入';
+    desc.textContent = `它返回了 ${reason === 'csp-frame-ancestors' ? 'CSP frame-ancestors' : 'X-Frame-Options'}，`
+      + '浏览器拒绝在 iframe 里显示它。只能在新标签打开。';
+    primary.textContent = '仍然尝试加载';
+  }
+
+  primary.addEventListener('click', () => mount(true));
+  secondary.addEventListener('click', () => window.open(url, '_blank', 'noopener'));
+
+  actions.append(primary, secondary);
+  box.append(title, desc, actions);
+
+  state.mounted = { id: service.id, mode };
+  el.frameWrap.replaceChildren(box);
+}
+
+async function mount(force = false) {
+  const service = activeService();
+  if (!service) return;
+
+  const token = ++mountToken;
+  const info = state.status[service.id];
+
+  if (info && info.online === false && !force) {
+    renderPlaceholder('offline', service);
+    return;
+  }
+
+  const embed = await ensureEmbed(service.id);
+  if (token !== mountToken) return; // 期间已经切到别的服务
+
+  if (embed && embed.embeddable === false && !force) {
+    renderPlaceholder('blocked', service, embed.reason);
+    return;
+  }
+
+  renderFrame(service);
+}
+
+function teardownFrame() {
+  mountToken += 1;
+  el.frameWrap.replaceChildren();
+  state.mounted = { id: null, mode: null };
+}
+
+function maybeAutoMount() {
+  const service = activeService();
+  if (!service || state.mounted.id !== service.id) return;
+  if (state.mounted.mode !== 'offline') return;
+
+  const info = state.status[service.id];
+  if (info && info.online) mount(false);
+}
+
+/* ------------------------------------------------------------ 路由 */
+
+function hashId() {
+  const raw = window.location.hash.replace(/^#\/?/, '').trim();
+  return raw ? decodeURIComponent(raw) : null;
+}
+
+function enterService(id) {
+  if (window.location.hash === `#/${id}`) return;
+  window.location.hash = `#/${id}`;
+}
+
+function goHome() {
+  if (!window.location.hash || window.location.hash === '#/') return;
+  window.location.hash = '#/';
+}
+
+function showHome() {
+  el.home.hidden = false;
+  el.workspace.hidden = true;
+  document.body.classList.remove('in-workspace');
+}
+
+function applyRoute() {
+  const id = hashId();
+  const service = id ? byId(id) : null;
+
+  if (!service) {
+    if (id) window.location.replace('#/'); // 未知服务，回到首页
+    if (state.activeId !== null) {
+      state.activeId = null;
+      teardownFrame();
+    }
+    showHome();
+    paintSidebar();
+    return;
+  }
+
+  const changed = state.activeId !== service.id;
+  state.activeId = service.id;
+
+  el.home.hidden = true;
+  el.workspace.hidden = false;
+  document.body.classList.add('in-workspace');
+  paintSidebar();
+  paintBar();
+
+  if (changed) mount(false);
+}
+
+/* ------------------------------------------------------------ 数据 */
 
 async function loadConfig() {
   const res = await fetch('/api/config', { cache: 'no-store' });
@@ -188,6 +434,7 @@ async function loadConfig() {
   document.title = el.title.textContent;
 
   el.grid.replaceChildren(...state.services.map(buildCard));
+  renderSidebar();
   applyFilter();
 }
 
@@ -198,8 +445,15 @@ async function loadStatus() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     state.status = data.status || {};
-    el.checkedAt.textContent = `状态更新于 ${formatTime(data.checkedAt)}`;
+
+    const stamp = `状态更新于 ${formatTime(data.checkedAt)}`;
+    el.checkedAt.textContent = stamp;
+    el.sideChecked.textContent = stamp;
+
     applyFilter();
+    paintSidebar();
+    paintBar();
+    maybeAutoMount();
   } catch (err) {
     el.checkedAt.textContent = `状态获取失败：${err.message}`;
   } finally {
@@ -207,27 +461,44 @@ async function loadStatus() {
   }
 }
 
-function openService(service) {
-  if (!service) return;
-  window.open(resolveUrl(service), '_blank', 'noopener');
+function refreshStatus(tip) {
+  loadStatus();
+  if (tip) toast(tip);
 }
 
-/* -------------------------------------------------------------- 交互 */
+/* ------------------------------------------------------------ 交互 */
 
 el.search.addEventListener('input', (event) => {
   state.filter = event.target.value;
   applyFilter();
 });
 
-el.refresh.addEventListener('click', () => {
-  loadStatus();
-  toast('已刷新状态');
+el.refresh.addEventListener('click', () => refreshStatus());
+el.sideRefresh.addEventListener('click', () => refreshStatus('已刷新状态'));
+
+el.actReload.addEventListener('click', () => {
+  mount(true); // 重建 iframe 节点，跨源也能真正刷新
+  toast('已重新加载');
 });
+
+el.actCopy.addEventListener('click', async () => {
+  const service = activeService();
+  if (!service) return;
+  const ok = await copyText(resolveUrl(service));
+  toast(ok ? '地址已复制' : '复制失败');
+});
+
+el.actNewtab.addEventListener('click', () => {
+  const service = activeService();
+  if (service) window.open(resolveUrl(service), '_blank', 'noopener');
+});
+
+window.addEventListener('hashchange', applyRoute);
 
 document.addEventListener('keydown', (event) => {
   const typing = event.target instanceof HTMLInputElement;
 
-  if (event.key === '/' && !typing) {
+  if (event.key === '/' && !typing && !state.activeId) {
     event.preventDefault();
     el.search.focus();
     el.search.select();
@@ -235,32 +506,34 @@ document.addEventListener('keydown', (event) => {
   }
 
   if (event.key === 'Escape') {
-    if (state.filter) {
-      state.filter = '';
-      el.search.value = '';
-      applyFilter();
+    if (typing) {
+      if (state.filter) {
+        state.filter = '';
+        el.search.value = '';
+        applyFilter();
+      }
+      el.search.blur();
+      return;
     }
-    el.search.blur();
+    // 注意：焦点落在 iframe 里时父页面收不到键盘事件，这里只覆盖焦点还在壳上的情况
+    if (state.activeId) {
+      goHome();
+      toast('已回到首页');
+    }
     return;
   }
 
   if (typing && event.key === 'Enter') {
     event.preventDefault();
-    openService(state.visible[0]);
-    return;
-  }
-
-  if (typing && event.key === 'ArrowDown') {
-    event.preventDefault();
-    el.grid.querySelector('.card:not([hidden])')?.focus();
+    const target = state.visible[0];
+    if (target) enterService(target.id);
     return;
   }
 
   if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
 
   if (event.key.toLowerCase() === 'r') {
-    loadStatus();
-    toast('已刷新状态');
+    refreshStatus('已刷新状态');
     return;
   }
 
@@ -268,7 +541,7 @@ document.addEventListener('keydown', (event) => {
     const target = state.visible[Number(event.key) - 1];
     if (target) {
       event.preventDefault();
-      openService(target);
+      enterService(target.id);
     }
   }
 });
@@ -287,7 +560,7 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden) loadStatus();
 });
 
-/* -------------------------------------------------------------- 启动 */
+/* ------------------------------------------------------------ 启动 */
 
 (async function main() {
   try {
@@ -296,6 +569,7 @@ document.addEventListener('visibilitychange', () => {
     el.checkedAt.textContent = `加载配置失败：${err.message}`;
     return;
   }
+  applyRoute();
   await loadStatus();
   startPolling();
 })();

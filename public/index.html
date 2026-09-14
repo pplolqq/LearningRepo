@@ -10,39 +10,71 @@
 <body>
   <div class="glow"></div>
 
-  <main class="shell">
-    <header class="head">
-      <div class="head-text">
-        <h1 id="title">本地服务网关</h1>
-        <p id="subtitle">一键跳转到本机已启动的前端服务</p>
+  <!-- 首页：服务卡片 -->
+  <div class="page" id="home">
+    <main class="shell">
+      <header class="head">
+        <div class="head-text">
+          <h1 id="title">本地服务网关</h1>
+          <p id="subtitle">一键跳转到本机已启动的前端服务</p>
+        </div>
+        <div class="head-stats">
+          <span class="pill" id="online-count">在线 –</span>
+          <button class="ghost" id="refresh" type="button" title="重新检测 (R)">刷新状态</button>
+        </div>
+      </header>
+
+      <div class="toolbar">
+        <div class="search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <input id="search" type="search" placeholder="搜索服务名、端口或标签…" autocomplete="off" spellcheck="false">
+          <kbd>/</kbd>
+        </div>
       </div>
-      <div class="head-stats">
-        <span class="pill" id="online-count">在线 –</span>
-        <button class="ghost" id="refresh" type="button" title="重新检测 (R)">刷新状态</button>
+
+      <section class="grid" id="grid" aria-label="服务列表"></section>
+
+      <p class="empty" id="empty" hidden>没有匹配的服务</p>
+
+      <footer class="foot">
+        <span id="checked-at">正在检测…</span>
+        <span class="sep">·</span>
+        <span>点卡片在网关里嵌着打开；<kbd>Ctrl</kbd>+点或点「新标签」开新页；<kbd>1</kbd>–<kbd>9</kbd> 快速打开</span>
+      </footer>
+    </main>
+  </div>
+
+  <!-- 工作台：左侧服务列表 + 右侧内嵌页面 -->
+  <div class="workspace" id="workspace" hidden>
+    <aside class="side">
+      <div class="side-head">
+        <a class="side-brand" href="#/">本地服务网关</a>
       </div>
-    </header>
-
-    <div class="toolbar">
-      <div class="search">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-        <input id="search" type="search" placeholder="搜索服务名、端口或标签…" autocomplete="off" spellcheck="false">
-        <kbd>/</kbd>
+      <nav class="side-list" id="side-list" aria-label="服务切换"></nav>
+      <div class="side-foot">
+        <button class="ghost small" id="side-refresh" type="button" title="重新检测 (R)">刷新状态</button>
+        <span id="side-checked">—</span>
       </div>
-    </div>
+    </aside>
 
-    <section class="grid" id="grid" aria-label="服务列表"></section>
-
-    <p class="empty" id="empty" hidden>没有匹配的服务</p>
-
-    <footer class="foot">
-      <span id="checked-at">正在检测…</span>
-      <span class="sep">·</span>
-      <span>快捷键：<kbd>/</kbd> 搜索，<kbd>1</kbd>–<kbd>9</kbd> 直接打开，<kbd>R</kbd> 刷新，<kbd>Esc</kbd> 清空</span>
-    </footer>
-  </main>
+    <section class="main">
+      <header class="bar">
+        <span class="dot" id="bar-dot" data-state="checking"></span>
+        <span class="bar-name" id="bar-name">—</span>
+        <code class="bar-url" id="bar-url"></code>
+        <span class="state" id="bar-state">检测中…</span>
+        <div class="bar-actions">
+          <button class="ghost small" id="act-reload" type="button" title="重新加载这个页面">重新加载</button>
+          <button class="ghost small" id="act-copy" type="button">复制地址</button>
+          <button class="solid small" id="act-newtab" type="button">在新标签打开 ↗</button>
+        </div>
+      </header>
+      <div class="frame-wrap" id="frame-wrap"></div>
+    </section>
+  </div>
 
   <template id="card-tpl">
-    <a class="card" target="_blank" rel="noopener noreferrer">
+    <a class="card" href="#">
       <span class="stripe"></span>
       <div class="card-head">
         <span class="dot" data-state="checking"></span>
@@ -53,9 +85,20 @@
       <div class="tags"></div>
       <div class="card-foot">
         <code class="url"></code>
-        <button class="copy" type="button" title="复制地址">复制</button>
+        <button class="mini" data-act="copy" type="button" title="复制地址">复制</button>
+        <button class="mini" data-act="newtab" type="button" title="在新标签打开">新标签 ↗</button>
       </div>
       <span class="idx"></span>
+    </a>
+  </template>
+
+  <template id="side-tpl">
+    <a class="side-item">
+      <span class="dot" data-state="checking"></span>
+      <span class="side-text">
+        <span class="side-name"></span>
+        <span class="side-port"></span>
+      </span>
     </a>
   </template>
 
