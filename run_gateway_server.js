@@ -9,6 +9,7 @@
  *   GET /api/status      -> 逐个 TCP 探活，返回每个服务的在线状态与耗时
  *   GET /api/health      -> 网关自身存活检查
  *   GET /api/embed?id=x  -> 目标页面是否允许被 iframe 嵌入（看 X-Frame-Options / CSP）
+ *   POST /api/start?id=x -> 调启动脚本把某个服务拉起来（复用 run_wsl.sh 的参数分发）
  *
  * 探活放在后端做：浏览器直连另一个端口会被 CORS 拦，后端探活不受影响，
  * 也不依赖页面是从 localhost 还是局域网 IP 打开的。
@@ -19,6 +20,7 @@ const https = require('node:https');
 const net = require('node:net');
 const fs = require('node:fs');
 const path = require('node:path');
+const { spawn } = require('node:child_process');
 
 const ROOT = __dirname;
 const PUBLIC_DIR = path.join(ROOT, 'public');
@@ -30,6 +32,7 @@ const HOST = process.env.GATEWAY_HOST || '127.0.0.1';
 const PROBE_TIMEOUT_MS = Number(process.env.GATEWAY_PROBE_TIMEOUT || 1200);
 const STATUS_CACHE_MS = 1500;
 const EMBED_CACHE_MS = Number(process.env.GATEWAY_EMBED_CACHE || 30000);
+const START_WAIT_MS = Number(process.env.GATEWAY_START_WAIT || 8000);
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -76,7 +79,8 @@ function normalizeService(service) {
     probeHost: service.probeHost || '127.0.0.1',
     color: service.color || '#6ea8fe',
     tags: Array.isArray(service.tags) ? service.tags : [],
-    envPort: service.envPort || null
+    envPort: service.envPort || null,
+    startArgs: Array.isArray(service.startArgs) ? service.startArgs : null
   };
 }
 
@@ -89,7 +93,7 @@ function readConfig() {
   }
 
   const gateway = Object.assign(
-    { title: '本地服务网关', subtitle: '', port: 5200 },
+    { title: '本地服务网关', subtitle: '', port: 5200, startScript: 'run_wsl.sh', bash: '' },
     raw.gateway || {}
   );
   const services = (raw.services || []).map(normalizeService).filter(Boolean);
@@ -196,6 +200,70 @@ async function checkEmbed(service) {
   return result;
 }
 
+/* ------------------------------------------------------------ 拉起服务 */
+
+const starting = new Set();
+
+// 剥掉 ANSI 颜色码，日志直接显示在页面上
+function cleanOutput(text) {
+  return text
+    .replace(/\u001b\[[0-9;]*[A-Za-z]/g, '')
+    .replace(/\r/g, '')
+    .trim()
+    .split('\n')
+    .slice(-12)
+    .join('\n');
+}
+
+function startService(service, gateway) {
+  const script = process.env.GATEWAY_START_SCRIPT || gateway.startScript || 'run_wsl.sh';
+  const bash = String(process.env.GATEWAY_BASH || gateway.bash || 'bash').trim();
+  const args = [script, ...service.startArgs];
+
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn(bash, args, { cwd: ROOT, windowsHide: true, detached: true });
+    } catch (err) {
+      resolve({ ok: false, error: `无法执行 ${bash}：${err.message}` });
+      return;
+    }
+
+    let output = '';
+    const collect = (chunk) => {
+      output = (output + chunk).slice(-8000);
+    };
+    child.stdout.on('data', collect);
+    child.stderr.on('data', collect);
+
+    let timer = null;
+    let settled = false;
+    const finish = (payload) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(Object.assign({ command: `${bash} ${args.join(' ')}` }, payload));
+    };
+
+    // 还在跑 = 服务常驻，就当启动成功，随后靠端口探活确认它真的起来了
+    timer = setTimeout(() => {
+      child.unref();
+      finish({ ok: true, running: true, pid: child.pid, output: cleanOutput(output) });
+    }, START_WAIT_MS);
+
+    child.on('error', (err) => finish({ ok: false, error: `无法执行 ${bash}：${err.message}` }));
+    child.on('exit', (code, signal) => {
+      const log = cleanOutput(output);
+      if (code === 0) {
+        finish({ ok: true, exited: true, output: log });
+        return;
+      }
+      const how = code === null ? signal : `退出码 ${code}`;
+      finish({ ok: false, error: `启动脚本异常退出（${how}）`, output: log });
+    });
+  });
+}
+
 /* ------------------------------------------------------------------ HTTP */
 
 function sendJson(res, status, payload) {
@@ -277,6 +345,40 @@ const server = http.createServer(async (req, res) => {
       embeddable: result.embeddable,
       reason: result.reason
     });
+    return;
+  }
+
+  if (url.pathname === '/api/start') {
+    if (req.method !== 'POST') {
+      sendJson(res, 405, { error: '这个接口要 POST' });
+      return;
+    }
+    const id = url.searchParams.get('id');
+    const service = config.services.find((item) => item.id === id);
+    if (!service) {
+      sendJson(res, 404, { error: 'unknown service' });
+      return;
+    }
+    if (!service.startArgs) {
+      sendJson(res, 400, { error: '这个服务没配置 startArgs，网关不知道该怎么启动它' });
+      return;
+    }
+    if (starting.has(service.id)) {
+      sendJson(res, 200, { ok: false, busy: true, error: '这个服务正在启动中，稍等一下' });
+      return;
+    }
+
+    starting.add(service.id);
+    console.log(`[start] 拉起 ${service.name}…`);
+    const result = await startService(service, config.gateway);
+    // 常驻的进程再多锁一会儿，避免连点拉起第二份；已经退出的立刻放锁
+    if (result.running) setTimeout(() => starting.delete(service.id), 5000);
+    else starting.delete(service.id);
+
+    if (result.ok) console.log(`[start] ${service.name} ${result.running ? '进程常驻中' : '脚本执行完毕'}`);
+    else console.warn(`[start] ${service.name} 启动失败：${result.error}`);
+
+    sendJson(res, result.ok ? 200 : 500, result);
     return;
   }
 
