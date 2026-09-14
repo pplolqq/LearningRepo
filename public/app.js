@@ -10,6 +10,7 @@ const state = {
   filter: '',
   activeId: null,
   embed: {},
+  startError: {},
   mounted: { id: null, mode: null } // mode: frame | offline | blocked
 };
 
@@ -166,6 +167,18 @@ function buildCard(service) {
     }, 1400);
   });
 
+  const startButton = node.querySelector('[data-act="start"]');
+  if (service.startArgs) {
+    node.classList.add('can-start');
+    startButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      requestStart(service, startButton);
+    });
+  } else {
+    startButton.remove();
+  }
+
   return node;
 }
 
@@ -304,33 +317,94 @@ function renderPlaceholder(mode, service, reason) {
   actions.className = 'ph-actions';
 
   const primary = document.createElement('button');
-  primary.className = 'ghost';
+  primary.className = 'solid';
   primary.type = 'button';
 
   const secondary = document.createElement('button');
-  secondary.className = 'solid';
+  secondary.className = 'ghost';
   secondary.type = 'button';
   secondary.textContent = '在新标签打开 ↗';
+  secondary.addEventListener('click', () => window.open(url, '_blank', 'noopener'));
 
   if (mode === 'offline') {
     title.textContent = '服务还没启动';
     desc.textContent = `端口 ${service.port} 没有响应。等它起来后会在这里自动加载，不用手动刷新。`;
-    primary.textContent = '立即重试';
+
+    if (service.startArgs) {
+      primary.textContent = '本地启动';
+      primary.title = '调用本机启动脚本把它拉起来';
+      primary.addEventListener('click', () => requestStart(service, primary));
+    } else {
+      primary.textContent = '立即重试';
+      primary.addEventListener('click', () => mount(true));
+    }
   } else {
     title.textContent = '这个页面不允许被嵌入';
     desc.textContent = `它返回了 ${reason === 'csp-frame-ancestors' ? 'CSP frame-ancestors' : 'X-Frame-Options'}，`
       + '浏览器拒绝在 iframe 里显示它。只能在新标签打开。';
     primary.textContent = '仍然尝试加载';
+    primary.addEventListener('click', () => mount(true));
   }
-
-  primary.addEventListener('click', () => mount(true));
-  secondary.addEventListener('click', () => window.open(url, '_blank', 'noopener'));
 
   actions.append(primary, secondary);
   box.append(title, desc, actions);
 
+  // 启动失败时把原因和脚本输出摊在这里，别只弹个 toast 就没了
+  const failure = mode === 'offline' ? state.startError[service.id] : null;
+  if (failure) {
+    const log = document.createElement('pre');
+    log.className = 'start-error';
+    log.textContent = [failure.message, failure.output].filter(Boolean).join('\n\n');
+    box.append(log);
+  }
+
   state.mounted = { id: service.id, mode };
   el.frameWrap.replaceChildren(box);
+}
+
+async function requestStart(service, button) {
+  const label = button ? button.textContent : '';
+  if (button) {
+    button.dataset.busy = '1';
+    button.textContent = '启动中…';
+  }
+
+  try {
+    const res = await fetch(`/api/start?id=${encodeURIComponent(service.id)}`, { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+
+    if (res.ok && data.ok) {
+      state.startError[service.id] = null;
+      toast(data.running ? '已发起启动，等端口起来…' : '启动脚本执行完了');
+      setTimeout(loadStatus, 1500);
+      return true;
+    }
+
+    if (data.busy) {
+      toast('正在启动中，稍等一下');
+      return false;
+    }
+
+    state.startError[service.id] = {
+      message: data.error || `启动失败（HTTP ${res.status}）`,
+      output: data.output || ''
+    };
+    toast('启动失败');
+    return false;
+  } catch (err) {
+    state.startError[service.id] = { message: `启动失败：${err.message}`, output: '' };
+    toast('启动失败');
+    return false;
+  } finally {
+    if (button) {
+      delete button.dataset.busy;
+      button.textContent = label;
+    }
+    // 在工作台里就地把失败原因贴出来
+    if (state.activeId === service.id && state.mounted.mode === 'offline') {
+      renderPlaceholder('offline', service);
+    }
+  }
 }
 
 async function mount(force = false) {
@@ -569,7 +643,8 @@ document.addEventListener('visibilitychange', () => {
     el.checkedAt.textContent = `加载配置失败：${err.message}`;
     return;
   }
-  applyRoute();
+  // 先拿到状态再决定渲染：直接带 #/服务 打开时，离线服务该显示占位而不是 iframe
   await loadStatus();
+  applyRoute();
   startPolling();
 })();
