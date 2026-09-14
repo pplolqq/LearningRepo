@@ -1,9 +1,12 @@
 """End-to-end checks against the running seekFile server (port 9021)."""
 import http.client
 import json
+import os
 import urllib.parse
 
-HOST, PORT = "127.0.0.1", 9021
+HOST = "127.0.0.1"
+# Matches run.sh's default port; override with SEEKFILE_PORT when testing.
+PORT = int(os.environ.get("SEEKFILE_PORT", "9999"))
 passed = failed = 0
 
 
@@ -156,11 +159,14 @@ print("10. security guards")
 s, d = get("/api/search?q=a", headers={"Host": "evil.example.com"})
 check("foreign Host rejected", s == 403, f"status={s}")
 s, d = get("/api/search?q=a", headers={"Origin": "https://evil.example.com",
-                                       "Host": "127.0.0.1:9021"})
+                                       "Host": f"127.0.0.1:{PORT}"})
 check("foreign Origin rejected", s == 403, f"status={s}")
-s, d = get("/api/search?q=a", headers={"Origin": "http://127.0.0.1:9021",
-                                       "Host": "127.0.0.1:9021"})
+s, d = get("/api/search?q=a", headers={"Origin": f"http://127.0.0.1:{PORT}",
+                                       "Host": f"127.0.0.1:{PORT}"})
 check("own Origin accepted", s == 200, f"status={s}")
+s, d = get("/api/search?q=a", headers={"Origin": "http://127.0.0.1:9021",
+                                       "Host": f"127.0.0.1:{PORT}"})
+check("origin from another port rejected", s == 403, f"status={s}")
 s, d = get("/../server.py")
 check("path traversal not served", s in (403, 404), f"status={s}")
 
@@ -175,6 +181,33 @@ r = conn.getresponse()
 check("missing path -> 404", r.status == 404, f"status={r.status}")
 r.read()
 conn.close()
+
+print()
+print("=" * 86)
+print("12. reveal_path always uses explorer /select (unit test, no server needed)")
+import run_seek_file as seekfile  # noqa: E402
+
+launched = []
+
+
+class _FakePopen:
+    def __init__(self, args, *a, **kw):
+        launched.append(args)
+
+
+_real_popen = seekfile.subprocess.Popen
+seekfile.subprocess.Popen = _FakePopen
+try:
+    seekfile.reveal_path("C:\\Users\\zrj21\\Desktop\\note.txt")
+    seekfile.reveal_path("C:\\Users\\zrj21\\Desktop\\some_folder")
+finally:
+    seekfile.subprocess.Popen = _real_popen
+
+check("file -> /select", launched[0] == ["explorer.exe", "/select,C:\\Users\\zrj21\\Desktop\\note.txt"],
+      str(launched[0]))
+check("folder -> /select (same behaviour)", launched[1] == ["explorer.exe", "/select,C:\\Users\\zrj21\\Desktop\\some_folder"],
+      str(launched[1]))
+check("no bare folder open", all(a[1].startswith("/select,") for a in launched))
 
 print()
 print("=" * 86)

@@ -101,6 +101,7 @@
   .row {
     height: 30px; cursor: default; border-bottom: 1px solid transparent;
     font-size: 13px; white-space: nowrap;
+    user-select: none;   /* dragging the pointer across rows must not select text */
   }
   .row:hover { background: var(--bg-soft); }
   .row.sel { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
@@ -162,9 +163,9 @@
   <div class="status"><span class="dot" id="dot"></span><span id="statusText">连接中…</span></div>
   <div class="spacer"></div>
   <div class="hint">
-    <kbd>↑</kbd><kbd>↓</kbd> 选择 ·
-    <kbd>Enter</kbd> 打开 ·
-    <kbd>Ctrl</kbd>+<kbd>Enter</kbd> 定位 ·
+    移动鼠标或 <kbd>↑</kbd><kbd>↓</kbd> 选择 ·
+    <kbd>Enter</kbd> 或双击 定位 ·
+    <kbd>Alt</kbd>+<kbd>Enter</kbd> 打开 ·
     <kbd>Ctrl</kbd>+<kbd>C</kbd> 复制路径
   </div>
 </header>
@@ -443,13 +444,25 @@ async function act(kind, row){
     });
     const data = await res.json();
     if (!data.ok) return toast(data.error || "操作失败");
-    if (kind === "open") toast(row.is_folder ? "已在资源管理器中打开" : "已用默认程序打开");
+    if (kind === "open") toast("已用默认程序打开");
+    else toast("已在资源管理器中定位");
   } catch (e){ toast("操作失败：" + e.message); }
 }
 async function copyPath(row){
   if (!row) return;
   try { await navigator.clipboard.writeText(row.full_path); toast("已复制路径"); }
   catch (_) { toast("复制失败，请手动选择"); }
+}
+
+/* Guard against a triple click, or a repeated double click on the same row,
+   spawning a second Explorer window for a path we just opened. */
+let lastReveal = { path:"", at:0 };
+async function revealRow(row){
+  if (!row) return;
+  const now = Date.now();
+  if (row.full_path === lastReveal.path && now - lastReveal.at < 700) return;
+  lastReveal = { path: row.full_path, at: now };
+  await act("reveal", row);
 }
 
 /* ---------------- rendering ---------------- */
@@ -535,12 +548,17 @@ function scrollToSel(){
   const el = $("rows").querySelector(".row.sel");
   if (el) el.scrollIntoView({ block: "nearest" });
 }
-function select(i){
+/* O(1): pointer hover calls this on every row change, so it must not walk
+   the whole list. */
+function select(i, { scroll = true } = {}){
   if (i < 0 || i >= state.rows.length) return;
-  state.sel = i;
   const rows = $("rows").children;
-  for (let k = 0; k < rows.length; k++) rows[k].classList.toggle("sel", k === i);
-  scrollToSel();
+  if (state.sel >= 0 && rows[state.sel]) rows[state.sel].classList.remove("sel");
+  state.sel = i;
+  if (rows[i]) rows[i].classList.add("sel");
+  // Hover must never scroll: the row is already under the pointer, and
+  // scrolling would slide a different row under it and loop forever.
+  if (scroll) scrollToSel();
 }
 function selectedRow(){
   return state.sel >= 0 ? state.rows[state.sel] : null;
@@ -624,7 +642,7 @@ function init(){
       e.preventDefault();
       const row = selectedRow();
       if (!row) return;
-      if (e.ctrlKey) act("reveal", row); else act("open", row);
+      if (e.altKey) act("open", row); else revealRow(row);
     } else if (e.key === "Escape"){
       $("q").value = ""; state.q = ""; search(); $("q").focus();
     }
@@ -648,18 +666,31 @@ function init(){
 
   $("rows").addEventListener("click", (e) => {
     const el = e.target.closest(".row");
-    if (el) select(parseInt(el.dataset.i, 10));
+    if (!el) return;
+    select(parseInt(el.dataset.i, 10), { scroll: false });
   });
+  // A single click only selects, so opening is reserved for double click,
+  // Enter and the right mouse button.
   $("rows").addEventListener("dblclick", (e) => {
     const el = e.target.closest(".row");
-    if (el) act("open", state.rows[parseInt(el.dataset.i, 10)]);
+    if (!el) return;
+    revealRow(state.rows[parseInt(el.dataset.i, 10)]);
+  });
+  // Selection follows the pointer, so moving the mouse up and down switches
+  // the highlighted file without touching the keyboard.
+  $("rows").addEventListener("mousemove", (e) => {
+    const el = e.target.closest(".row");
+    if (!el) return;
+    const i = parseInt(el.dataset.i, 10);
+    if (i !== state.sel) select(i, { scroll: false });
   });
   $("rows").addEventListener("contextmenu", (e) => {
     const el = e.target.closest(".row");
     if (!el) return;
     e.preventDefault();
-    select(parseInt(el.dataset.i, 10));
-    act("reveal", selectedRow());
+    const i = parseInt(el.dataset.i, 10);
+    select(i, { scroll: false });
+    revealRow(state.rows[i]);
   });
 
   document.addEventListener("keydown", (e) => {

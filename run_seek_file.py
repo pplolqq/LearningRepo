@@ -43,7 +43,8 @@ from pathlib import Path
 
 EVERYTHING_BASE = os.environ.get("SEEKFILE_EVERYTHING", "http://127.0.0.1:9020/")
 HOST = "127.0.0.1"
-PORT = int(os.environ.get("SEEKFILE_PORT", "9021"))
+# Keep this in step with run.sh, which also defaults to 9999.
+PORT = int(os.environ.get("SEEKFILE_PORT", "9999"))
 TIMEOUT = 30
 HARD_LIMIT = 2000
 
@@ -250,10 +251,13 @@ def open_path(path: str) -> None:
 
 
 def reveal_path(path: str) -> None:
-    if os.path.isdir(path):
-        subprocess.Popen(["explorer.exe", path])
-    else:
-        subprocess.Popen(["explorer.exe", "/select,%s" % path])
+    """Open the containing folder in Explorer with the item highlighted.
+
+    Files and folders behave identically: the parent folder opens and the item
+    is selected. This is the Windows "open file location" behaviour, and it
+    keeps the primary action the same no matter what the hit is.
+    """
+    subprocess.Popen(["explorer.exe", "/select,%s" % path])
 
 
 def available_scopes() -> list[dict]:
