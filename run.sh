@@ -3,7 +3,7 @@
 set -e
 cd "$(dirname "$0")"
 
-export GATEWAY_PORT="${GATEWAY_PORT:-5207}"
+export GATEWAY_PORT="${GATEWAY_PORT:-5200}"
 export NOTE_PORT="${NOTE_PORT:-5202}"
 export SEEKFILE_PORT="${SEEKFILE_PORT:-9993}"
 
