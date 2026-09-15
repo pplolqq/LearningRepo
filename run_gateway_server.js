@@ -59,8 +59,11 @@ function normalizeService(service) {
 
   // 端口可以写死在 JSON 里，也可以用 envPort 让环境变量覆盖，
   // 这样 `export NOTE_PORT=5202` 之后不用改配置文件。
-  const fromEnv = service.envPort ? Number(process.env[service.envPort]) : NaN;
-  const port = Number.isFinite(fromEnv) ? fromEnv : Number(service.port);
+  // 注意变量存在但为空串（`export PI_PORT=`）的情况：Number("") 是 0，
+  // 直接用会让端口变成 0，所以空串和非正数都当没设过。
+  const rawEnv = service.envPort ? process.env[service.envPort] : '';
+  const fromEnv = rawEnv && rawEnv.trim() ? Number(rawEnv) : NaN;
+  const port = Number.isFinite(fromEnv) && fromEnv > 0 ? fromEnv : Number(service.port);
   const url = service.url || '';
 
   if (!url && !Number.isFinite(port)) {
