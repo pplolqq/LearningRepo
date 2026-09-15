@@ -26,6 +26,42 @@
       "startArgs": ["seekfile"],
       "color": "#5fd7a6",
       "tags": ["SeekFile"]
+    },
+    {
+      "id": "pi-wsl",
+      "name": "PI (WSL)",
+      "description": "PI 前端，WSL 侧。",
+      "port": 5210,
+      "envPort": "PI_PORT_WSL",
+      "color": "#a78bfa",
+      "tags": ["PI", "WSL"]
+    },
+    {
+      "id": "dsh-wsl",
+      "name": "DSH (WSL)",
+      "description": "DSH 前端，WSL 侧。",
+      "port": 5211,
+      "envPort": "DSH_PORT_WSL",
+      "color": "#f0a868",
+      "tags": ["DSH", "WSL"]
+    },
+    {
+      "id": "pi",
+      "name": "PI",
+      "description": "PI 前端，Windows 侧。",
+      "port": 5212,
+      "envPort": "PI_PORT",
+      "color": "#7dd3fc",
+      "tags": ["PI"]
+    },
+    {
+      "id": "dsh",
+      "name": "DSH",
+      "description": "DSH 前端，Windows 侧。",
+      "port": 5213,
+      "envPort": "DSH_PORT",
+      "color": "#f472b6",
+      "tags": ["DSH"]
     }
   ]
 }
