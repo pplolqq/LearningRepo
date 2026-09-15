@@ -1,5 +1,10 @@
 export NOTE_PORT="5202"
 export SEEKFILE_PORT="9993"
+export PI_PORT_WSL="5210"
+export DSH_PORT_WSL="5211"
+export PI_PORT="5212"
+export DSH_PORT="5213"
+
 
 start_noteTp(){
 #  noteTp
@@ -8,7 +13,6 @@ wsl -e bash -lc "
     source \$HOME/.config/.bash_func
     kkk_load_login_env
     ./start_noteTp.sh stop
-
     export VITE_PORT=$NOTE_PORT
     export VITE_BACKEND_PORT="10101"
     ./start_noteTp.sh 
