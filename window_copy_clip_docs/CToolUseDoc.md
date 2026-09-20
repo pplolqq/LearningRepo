@@ -4,7 +4,7 @@
 
 | 程序 | 功能 | 剪贴板格式 |
 |------|------|-----------|
-| `cfclip.exe` | 把**一个文件**放入剪贴板，QQ / 微信 / Electron 可按 Ctrl+V 接收 | `CF_HDROP`（文件拖放列表） |
+| `cfclip.exe` | 把**一个或多个文件**放入剪贴板，QQ / 微信 / Electron 可按 Ctrl+V 接收 | `CF_HDROP`（文件拖放列表） |
 | `clip666.exe` | 把**一段文本**放入剪贴板 | `CF_UNICODETEXT`（Unicode 文本） |
 
 ---
@@ -31,6 +31,9 @@ gcc -O2 -Wall -Wextra -municode clip666.c -o clip666.exe -luser32
 # 1) 把文件放入剪贴板（相对路径、绝对路径、空格文件名都行）
 ./cfclip.exe "test file.txt"
 ./cfclip.exe "C:\Windows\notepad.exe"
+
+# 1b) 一次放入多个文件（参数个数不限，QQ / 微信里一次粘贴多个）
+./cfclip.exe a.txt "b c.txt" "C:\Windows\notepad.exe"
 
 # 2) 把文本放入剪贴板
 ./clip666.exe
@@ -84,14 +87,19 @@ CloseClipboard ──► 关闭
 |   DROPFILES 头   |  pFiles / pt / fNC / fWide
 +------------------+
 |  "C:\path\a.txt" |  宽字符文件路径
-|        \0        |  第 1 个 NUL：字符串结束
-|        \0        |  第 2 个 NUL：整个列表结束
+|        \0        |  第 1 个 NUL：该字符串结束
+|  "C:\path\b.txt" |  下一个文件路径
+|        \0        |  字符串结束
+|        \0        |  最后一个 NUL：整个列表结束
 +------------------+
 ```
 
 - `pFiles = sizeof(DROPFILES)`：告诉接收方「文件列表从头的末尾开始」
 - `fWide = TRUE`：声明列表用宽字符（否则按 ANSI 解析）
-- **双 NUL 结尾是必须的**：文件列表是一个「以空字符串结尾的字符串数组」，少一个 NUL 接收方就解析不到
+- **单文件是「路径 + 两个连续 NUL」，多文件是「路径1 NUL 路径2 NUL … 路径N NUL NUL」**：
+  每个路径各带一个自己的 NUL，列表末尾再补一个 NUL（也就是一个空字符串）作为终止符。
+  大小 = `sizeof(DROPFILES) + Σ(wcslen(路径)+1) + 1` 个宽字符。
+- 接收方（`DragQueryFileW` / `GetFileDropList`）按「遇到空字符串就结束」解析，所以少一个 NUL 就解析不到。
 
 ### 4.4 `CF_UNICODETEXT` 的格式
 
@@ -118,8 +126,12 @@ CloseClipboard ──► 关闭
 |------|-------------|
 | 相对路径 | `GetFullPathNameW` 基于 cwd 解析为绝对路径 |
 | 空格文件名 | ✅ 宽字符参数原生支持 |
+| 多个文件 | ✅ 全部放入同一个 `CF_HDROP` 列表，顺序与参数一致 |
 | 文件不存在 | 报错，`exit=1`，不污染剪贴板 |
 | 目录 | 报错（视为无效） |
 | 无参数 | 打印用法，`exit=1` |
+
+> 多文件是**先全部校验、再统一写入**：任何一个参数无效都会在打开剪贴板之前报错并退出，
+> 剪贴板里原有内容保持不变，不会留下「只写进去一半」的残缺列表。
 
 > 附：`/c/xxx` 类 Linux 风格路径在 Git Bash 下能用，是 **MSYS2 在传参前自动转换**的结果，并非程序实现；在 cmd / PowerShell 里直接传 `/c/xxx` 不会生效。
