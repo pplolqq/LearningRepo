@@ -260,6 +260,65 @@ def reveal_path(path: str) -> None:
     subprocess.Popen(["explorer.exe", "/select,%s" % path])
 
 
+# Locations the OS protects from normal users. Only these are worth blocking on.
+SYSTEM_ROOTS = [
+    root for root in (
+        os.environ.get("ProgramFiles", r"C:\Program Files"),
+        os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+        os.environ.get("SystemRoot", r"C:\Windows"),
+    ) if root
+]
+
+
+def is_system_location(path: str) -> bool:
+    target = os.path.abspath(path)
+    for root in SYSTEM_ROOTS:
+        try:
+            if os.path.commonpath([target, os.path.abspath(root)]) == os.path.abspath(root):
+                return True
+        except ValueError:          # different drive
+            continue
+    return False
+
+
+def unreachable_folder(path: str) -> tuple[str, OSError] | None:
+    """Find the OS-protected ancestor folder Explorer would fail to enumerate.
+
+    Explorer walks the whole chain before it can show the target. When one of
+    those folders denies listing - `C:\\Program Files\\WindowsApps` is the
+    common case, it is owned by TrustedInstaller - `/select` fails quietly and
+    Explorer opens its default folder (Documents) instead. That looks exactly
+    like "the double click did nothing", so it is worth detecting up front.
+
+    Note the denial can sit several levels above the target while the target's
+    own folder stays readable, so checking only the immediate parent is not
+    enough.
+
+    Only denials inside the OS-protected roots above are reported. A denial
+    anywhere else usually just means this process has a narrower token than the
+    user's Explorer does (a sandbox, for instance), and blocking there would
+    refuse a reveal that Explorer could have handled fine.
+    """
+    start = os.path.dirname(os.path.abspath(path)) or os.path.abspath(path)
+    chain: list[str] = []
+    folder = start
+    while True:
+        chain.append(folder)
+        parent = os.path.dirname(folder)
+        if parent == folder:
+            break
+        folder = parent
+
+    for candidate in reversed(chain):          # drive root first, like Explorer
+        try:
+            with os.scandir(candidate) as entries:
+                next(entries, None)            # only enumeration permission matters
+        except OSError as exc:
+            if is_system_location(candidate):
+                return candidate, exc
+    return None
+
+
 def available_scopes() -> list[dict]:
     home = Path.home()
     candidates = [
@@ -447,6 +506,19 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": False, "error": "缺少 path 参数"}, 400)
         if not os.path.exists(path):
             return self._json({"ok": False, "error": "路径不存在：%s" % path}, 404)
+        if reveal:
+            blocked = unreachable_folder(path)
+            if blocked:
+                folder, exc = blocked
+                return self._json({
+                    "ok": False,
+                    # Machine-readable flag: the UI copies the path to the
+                    # clipboard instead, since Explorer cannot go there.
+                    "blocked": True,
+                    "folder": folder,
+                    "error": "%s 受系统保护、不允许列出内容（%s），资源管理器无法在该位置打开"
+                             % (folder, exc.strerror or exc),
+                }, 403)
         try:
             if reveal:
                 reveal_path(path)
